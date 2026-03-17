@@ -701,6 +701,7 @@ class _NewODPageState extends State<_NewODPage> {
 
     // Limit to 5 MB
     if (base64.length * 3 / 4 > 5 * 1024 * 1024) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('File too large (max 5 MB)'),
