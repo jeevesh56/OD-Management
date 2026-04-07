@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 
 import 'api_service.dart';
 import 'screens/login_screen.dart';
@@ -27,10 +28,7 @@ class _ECHomeScreenState extends State<ECHomeScreen> {
       appBar: AppBar(
         title: const Text(
           'Event Coordinator',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: kBlue,
         automaticallyImplyLeading: false,
@@ -41,9 +39,7 @@ class _ECHomeScreenState extends State<ECHomeScreen> {
               AuthStore.clear();
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const ODLoginUI(),
-                ),
+                MaterialPageRoute(builder: (_) => const ODLoginUI()),
               );
             },
           ),
@@ -59,7 +55,10 @@ class _ECHomeScreenState extends State<ECHomeScreen> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.queue), label: 'Queue'),
           BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Events'),
-          BottomNavigationBarItem(icon: Icon(Icons.upload_file), label: 'Upload'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.upload_file),
+            label: 'Upload',
+          ),
           BottomNavigationBarItem(
             icon: Icon(Icons.qr_code_scanner),
             label: 'Scan',
@@ -98,13 +97,48 @@ class _ECQueueState extends State<_ECQueue> {
     setState(() {
       _loading = false;
       if (res.ok) {
-        _requests = (res.data as List? ?? [])
-            .map((e) => Map<String, dynamic>.from(e as Map))
+        final raw = res.data;
+        final list = raw is List ? raw : const [];
+        _requests = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
             .toList();
       } else {
         _error = res.error;
       }
     });
+  }
+
+  Future<void> _openProof(Map<String, dynamic> r) async {
+    final b64 = r['attachment_base64']?.toString();
+    final mime = r['attachment_mime']?.toString();
+    if (b64 == null || mime == null || b64.isEmpty || mime.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No image proof uploaded')));
+      return;
+    }
+    if (!mime.startsWith('image/')) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only image proof preview is supported')),
+      );
+      return;
+    }
+    final bytes = base64Decode(b64);
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: InteractiveViewer(
+            child: Image.memory(bytes, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -127,10 +161,7 @@ class _ECQueueState extends State<_ECQueue> {
                 style: const TextStyle(color: Colors.red),
               ),
               const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _load,
-                child: const Text('Retry'),
-              ),
+              ElevatedButton(onPressed: _load, child: const Text('Retry')),
             ],
           ),
         ),
@@ -138,225 +169,287 @@ class _ECQueueState extends State<_ECQueue> {
     }
     if (_requests.isEmpty) {
       return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle_outline, size: 80, color: Colors.green),
-            SizedBox(height: 16),
-            Text(
-              'Queue empty!',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.inbox_outlined, size: 80, color: Colors.grey),
+              SizedBox(height: 16),
+              Text(
+                'No mentor-approved requests yet',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-            ),
-          ],
+              SizedBox(height: 8),
+              Text(
+                'Pull to refresh after mentors approve student OD requests.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
         ),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: _requests.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 14),
-      itemBuilder: (_, i) {
-        final r = _requests[i];
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x11000000),
-                blurRadius: 8,
-                offset: Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                width: 6,
-                decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.horizontal(
-                    left: Radius.circular(18),
-                  ),
-                  color: Colors.indigo.shade400,
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        itemCount: _requests.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 14),
+        itemBuilder: (_, i) {
+          final r = _requests[i];
+          final studentName = r['student_name']?.toString().trim().isNotEmpty == true
+              ? r['student_name'].toString().trim()
+              : 'Student';
+          final studentInitial = studentName.isNotEmpty
+              ? studentName.substring(0, 1).toUpperCase()
+              : 'S';
+          final eventName = r['event_name']?.toString().trim().isNotEmpty == true
+              ? r['event_name'].toString().trim()
+              : 'Untitled event';
+          final startDate = r['start_date']?.toString().trim().isNotEmpty == true
+              ? r['start_date'].toString().trim()
+              : '—';
+          final endDate = r['end_date']?.toString().trim().isNotEmpty == true
+              ? r['end_date'].toString().trim()
+              : '—';
+          final venue = r['venue']?.toString().trim().isNotEmpty == true
+              ? r['venue'].toString().trim()
+              : 'Venue not set';
+          final hasProof =
+              (r['attachment_base64']?.toString().isNotEmpty ?? false) &&
+              (r['attachment_mime']?.toString().isNotEmpty ?? false);
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x11000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
                 ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+              ],
+            ),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: 6,
+                    decoration: BoxDecoration(
+                      borderRadius: const BorderRadius.horizontal(
+                        left: Radius.circular(18),
+                      ),
+                      color: Colors.indigo.shade400,
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: kBlue,
-                            child: Text(
-                              (r['student_name'] as String? ?? 'S')[0],
-                              style: const TextStyle(color: Colors.white),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: kBlue,
+                              child: Text(
+                                studentInitial,
+                                style: const TextStyle(color: Colors.white),
+                              ),
                             ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    studentName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Request ID: ${r['id'] ?? '—'}',
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.verified, size: 14, color: kBlue),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Mentor OK',
+                                    style: TextStyle(
+                                      color: kBlue,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.event, size: 16, color: Colors.grey),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                eventName,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_month,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '$startDate – $endDate',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.place, size: 16, color: Colors.grey),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                venue,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (hasProof) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.photo_outlined,
+                                size: 16,
+                                color: Colors.black54,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  r['attachment_name']?.toString() ??
+                                      'image proof',
+                                  style: const TextStyle(fontSize: 12),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => _openProof(r),
+                                child: const Text('View proof'),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  r['student_name'] as String? ?? 'Student',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
+                        ],
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  ECApi.action(
+                                    requestId: r['id'].toString(),
+                                    action: 'REJECTED',
+                                    reason: 'Rejected by EC',
+                                  ).then((_) => _load());
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.red),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
                                 ),
-                                Text(
-                                  'Request ID: ${r['id']}',
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 11,
+                                child: const Text(
+                                  'Reject',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  ECApi.action(
+                                    requestId: r['id'].toString(),
+                                    action: 'CONFIRMED',
+                                    reason: 'Confirmed by EC',
+                                  ).then((_) => _load());
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.verified, size: 14, color: kBlue),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Mentor OK',
-                                  style: TextStyle(
-                                    color: kBlue,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.event, size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              r['event_name'] as String? ?? '—',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.calendar_month,
-                              size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '${r['start_date']} – ${r['end_date']}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.place, size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              r['venue'] as String? ?? '—',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                ECApi.action(
-                                  requestId: r['id'].toString(),
-                                  action: 'REJECTED',
-                                  reason: 'Rejected by EC',
-                                ).then((_) => _load());
-                              },
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Colors.red),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                                child: const Text(
+                                  'Confirm',
+                                  style: TextStyle(color: Colors.white),
                                 ),
                               ),
-                              child: const Text(
-                                'Reject',
-                                style: TextStyle(color: Colors.red),
-                              ),
                             ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                ECApi.action(
-                                  requestId: r['id'].toString(),
-                                  action: 'CONFIRMED',
-                                  reason: 'Confirmed by EC',
-                                ).then((_) => _load());
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              child: const Text(
-                                'Confirm',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -388,8 +481,12 @@ class _ECEventsState extends State<_ECEvents> {
     setState(() {
       _loading = false;
       if (res.ok) {
-        final raw = res.data as List? ?? [];
-        _items = raw.cast<Map<String, dynamic>>().toList();
+        final raw = res.data;
+        final list = raw is List ? raw : const [];
+        _items = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
       } else {
         _error = res.error;
       }
@@ -416,10 +513,7 @@ class _ECEventsState extends State<_ECEvents> {
                 style: const TextStyle(color: Colors.red),
               ),
               const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _load,
-                child: const Text('Retry'),
-              ),
+              ElevatedButton(onPressed: _load, child: const Text('Retry')),
             ],
           ),
         ),
@@ -486,10 +580,7 @@ class _ECEventsState extends State<_ECEvents> {
                     const SizedBox(height: 2),
                     Text(
                       studentsLabel,
-                      style: const TextStyle(
-                        color: Colors.grey,
-                        fontSize: 12,
-                      ),
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                     if (sampleNames.isNotEmpty) ...[
                       const SizedBox(height: 4),
@@ -525,10 +616,7 @@ class _ECUpload extends StatelessWidget {
         children: [
           const Text(
             'Bulk PDF Upload',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 4),
           const Text(
@@ -541,7 +629,9 @@ class _ECUpload extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 4),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -558,12 +648,7 @@ class _ECUpload extends StatelessWidget {
                     ),
                   ),
                   items: ['Symposium 2025', 'AI Workshop', 'Hackathon']
-                      .map(
-                        (e) => DropdownMenuItem(
-                          value: e,
-                          child: Text(e),
-                        ),
-                      )
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                       .toList(),
                   onChanged: (_) {},
                 ),
@@ -571,9 +656,7 @@ class _ECUpload extends StatelessWidget {
                 GestureDetector(
                   onTap: () {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('File picker coming soon'),
-                      ),
+                      const SnackBar(content: Text('File picker coming soon')),
                     );
                   },
                   child: Container(
@@ -601,10 +684,7 @@ class _ECUpload extends StatelessWidget {
                         ),
                         Text(
                           'Participant list with roll numbers',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
-                          ),
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
                         ),
                       ],
                     ),
@@ -632,9 +712,7 @@ class _ECUpload extends StatelessWidget {
                     ),
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Select a file first'),
-                        ),
+                        const SnackBar(content: Text('Select a file first')),
                       );
                     },
                   ),
@@ -703,17 +781,21 @@ class _ECProfile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final name = AuthStore.fullName ?? 'EC';
+    final dept = AuthStore.userDepartment ?? 'Department';
+    final initials = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'E';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
           const SizedBox(height: 16),
-          const CircleAvatar(
+          CircleAvatar(
             radius: 50,
             backgroundColor: kBlue,
             child: Text(
-              'AN',
-              style: TextStyle(
+              initials,
+              style: const TextStyle(
                 fontSize: 32,
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -721,29 +803,28 @@ class _ECProfile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Prof. Anita Nair',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
+          Text(
+            name,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
-          const Text(
-            'Event Coordinator · CSE',
-            style: TextStyle(color: Colors.grey),
+          Text(
+            'Event Coordinator · $dept',
+            style: const TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 24),
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 4),
+              ],
             ),
             child: Column(
               children: [
                 _row('Staff ID', 'RIT-FAC-002'),
                 const Divider(height: 1),
-                _row('Department', 'CSE'),
+                _row('Department', dept),
                 const Divider(height: 1),
                 _row('Events Managed', '3'),
               ],
@@ -769,9 +850,7 @@ class _ECProfile extends StatelessWidget {
                 AuthStore.clear();
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const ODLoginUI(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const ODLoginUI()),
                 );
               },
             ),
@@ -782,20 +861,13 @@ class _ECProfile extends StatelessWidget {
   }
 
   Widget _row(String l, String v) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              l,
-              style: const TextStyle(color: Colors.grey),
-            ),
-            Text(
-              v,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(l, style: const TextStyle(color: Colors.grey)),
+        Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
+    ),
+  );
 }
-

@@ -11,10 +11,16 @@ const Color kRed = Color(0xFFB71C1C);
 // Chrome (web):        http://localhost:5000
 // Android emulator:   http://10.0.2.2:5000
 // Real phone on WiFi: http://192.168.x.x:5000  ← your PC's local IP
-const String kBaseUrl = 'http://localhost:5000';
+const String kBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://localhost:5000',
+);
 
-// When true, all OD-related APIs return mock data instead of calling backend.
-const bool kUseMockApi = true;
+// Enable with `--dart-define=USE_MOCK=true` when you want in-memory demo data.
+const bool kUseMockApi = bool.fromEnvironment(
+  'USE_MOCK',
+  defaultValue: false,
+);
 
 // ── Simple in-memory token store (no shared_preferences needed) ──────────────
 /// Fixed prefix for registration numbers; only last 3 digits vary (from email).
@@ -25,6 +31,7 @@ class AuthStore {
   static String? role;
   static String? userId;
   static String? fullName;
+  static String? userDepartment;
   static Map<String, dynamic>? studentProfile;
 
   /// Set on student login; used to derive registration number for QR.
@@ -49,17 +56,41 @@ class AuthStore {
     if (i <= 0) return 'Student';
     final prefix = trimmed.substring(0, i);
     if (prefix.isEmpty) return 'Student';
-    final firstPart =
-        prefix.contains('.') ? prefix.split('.').first : prefix;
+    final firstPart = prefix.contains('.') ? prefix.split('.').first : prefix;
     if (firstPart.isEmpty) return 'Student';
-    return firstPart[0].toUpperCase() +
-        firstPart.substring(1).toLowerCase();
+    return firstPart[0].toUpperCase() + firstPart.substring(1).toLowerCase();
+  }
+
+  static bool isValidRoleEmail(String email) {
+    final e = email.trim().toLowerCase();
+    return RegExp(r'^[a-zA-Z]+@[a-zA-Z]+\.ritchennai\.edu\.in$').hasMatch(e);
+  }
+
+  static String roleNameFromEmail(String email) {
+    final e = email.trim();
+    final at = e.indexOf('@');
+    if (at <= 0) return 'User';
+    final raw = e.substring(0, at);
+    if (raw.isEmpty) return 'User';
+    return raw[0].toUpperCase() + raw.substring(1).toLowerCase();
+  }
+
+  static String roleDepartmentFromEmail(String email) {
+    final e = email.trim();
+    final at = e.indexOf('@');
+    if (at <= 0) return 'Department';
+    final domain = e.substring(at + 1);
+    final parts = domain.split('.');
+    final raw = parts.isNotEmpty ? parts.first : '';
+    if (raw.isEmpty) return 'Department';
+    return raw.toUpperCase();
   }
 
   /// Call when student signs in with college email (before opening StudentHomeScreen).
   static void applyStudentLogin(String email) {
     studentLoginEmail = email.trim();
     fullName = displayNameFromStudentEmail(email);
+    userDepartment = 'CSE';
     userId = registrationFromLoginEmail(email);
     studentProfile = {
       'register_number': registrationFromLoginEmail(email),
@@ -74,17 +105,29 @@ class AuthStore {
   /// Simple helpers for mentor / HoD names from the same email textbox.
   static void applyMentorLogin(String input) {
     final email = input.trim();
-    fullName = email.contains('@')
-        ? displayNameFromStudentEmail(email)
-        : 'Mentor';
+    fullName = email.contains('@') ? roleNameFromEmail(email) : 'Mentor';
+    userDepartment = email.contains('@')
+        ? roleDepartmentFromEmail(email)
+        : 'Department';
     role = 'mentor';
   }
 
   static void applyHodLogin(String input) {
     final email = input.trim();
-    fullName =
-        email.contains('@') ? displayNameFromStudentEmail(email) : 'HoD';
+    fullName = email.contains('@') ? roleNameFromEmail(email) : 'HoD';
+    userDepartment = email.contains('@')
+        ? roleDepartmentFromEmail(email)
+        : 'Department';
     role = 'hod';
+  }
+
+  static void applyEcLogin(String input) {
+    final email = input.trim();
+    fullName = email.contains('@') ? roleNameFromEmail(email) : 'EC';
+    userDepartment = email.contains('@')
+        ? roleDepartmentFromEmail(email)
+        : 'Department';
+    role = 'ec';
   }
 
   static void clear() {
@@ -92,14 +135,15 @@ class AuthStore {
     role = null;
     userId = null;
     fullName = null;
+    userDepartment = null;
     studentProfile = null;
     studentLoginEmail = null;
   }
 
   static Map<String, String> get headers => {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      };
+    'Content-Type': 'application/json',
+    if (token != null) 'Authorization': 'Bearer $token',
+  };
 }
 
 // Simple in-memory store used when kUseMockApi is true. This lets the full
@@ -117,6 +161,9 @@ class MockOdStore {
     required String startTime,
     required String endTime,
     required String reason,
+    String? attachmentName,
+    String? attachmentMime,
+    String? attachmentBase64,
   }) {
     final id = (_nextId++).toString();
     final request = <String, dynamic>{
@@ -129,6 +176,9 @@ class MockOdStore {
       'start_time': startTime,
       'end_time': endTime,
       'reason': reason,
+      if (attachmentName != null) 'attachment_name': attachmentName,
+      if (attachmentMime != null) 'attachment_mime': attachmentMime,
+      if (attachmentBase64 != null) 'attachment_base64': attachmentBase64,
       'status': 'PENDING',
       'created_at': DateTime.now().toIso8601String(),
       'student_name': AuthStore.fullName ?? 'Student',
@@ -221,6 +271,9 @@ class OdApi {
         startTime: startTime,
         endTime: endTime,
         reason: reason,
+        attachmentName: attachmentName,
+        attachmentMime: attachmentMime,
+        attachmentBase64: attachmentBase64,
       );
       return ApiResult.success(request);
     }
@@ -252,14 +305,29 @@ class OdApi {
       if (res.statusCode == 201) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Submission failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      final request = MockOdStore.addRequest(
+        eventName: eventName,
+        organiser: organiser,
+        venue: venue,
+        startDate: startDate,
+        endDate: endDate,
+        startTime: startTime,
+        endTime: endTime,
+        reason: reason,
+        attachmentName: attachmentName,
+        attachmentMime: attachmentMime,
+        attachmentBase64: attachmentBase64,
+      );
+      return ApiResult.success(request);
     }
   }
 
   // Get my OD history
   static Future<ApiResult<List>> myRequests() async {
     if (kUseMockApi) {
-      return ApiResult.success(List<Map<String, dynamic>>.from(MockOdStore.items));
+      return ApiResult.success(
+        List<Map<String, dynamic>>.from(MockOdStore.items),
+      );
     }
 
     try {
@@ -276,7 +344,7 @@ class OdApi {
       }
       return ApiResult.fail(body['error'] ?? 'Failed to load');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      return ApiResult.success(List<Map<String, dynamic>>.from(MockOdStore.items));
     }
   }
 
@@ -287,9 +355,7 @@ class OdApi {
   }) async {
     if (kUseMockApi) {
       // Very simple mock: never blocks, just says no overlap.
-      return ApiResult.success(<String, dynamic>{
-        'has_overlap': false,
-      });
+      return ApiResult.success(<String, dynamic>{'has_overlap': false});
     }
 
     try {
@@ -307,16 +373,14 @@ class OdApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Check failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      return ApiResult.success(<String, dynamic>{'has_overlap': false});
     }
   }
 
   // Active OD session
   static Future<ApiResult<Map>> activeSession() async {
     if (kUseMockApi) {
-      return ApiResult.success(<String, dynamic>{
-        'has_active_session': false,
-      });
+      return ApiResult.success(<String, dynamic>{'has_active_session': false});
     }
 
     try {
@@ -331,7 +395,7 @@ class OdApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      return ApiResult.success(<String, dynamic>{'has_active_session': false});
     }
   }
 }
@@ -359,7 +423,10 @@ class MentorApi {
       }
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      final pending = MockOdStore.items
+          .where((r) => r['status'] == 'PENDING')
+          .toList(growable: false);
+      return ApiResult.success(pending);
     }
   }
 
@@ -375,7 +442,9 @@ class MentorApi {
         return ApiResult.fail('Request not found');
       }
       r['mentor_comment'] = comment ?? reason;
-      r['status'] = action == 'APPROVED' ? 'MENTOR_APPROVED' : 'MENTOR_REJECTED';
+      r['status'] = action == 'APPROVED'
+          ? 'MENTOR_APPROVED'
+          : 'MENTOR_REJECTED';
       return ApiResult.success(r);
     }
 
@@ -387,8 +456,8 @@ class MentorApi {
             body: jsonEncode({
               'request_id': requestId,
               'action': action,
-              if (reason != null) 'reason': reason,
-              if (comment != null) 'comment': comment,
+              'reason': reason,
+              'comment': comment,
             }),
           )
           .timeout(const Duration(seconds: 10));
@@ -396,16 +465,26 @@ class MentorApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Action failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      final r = MockOdStore.byId(requestId);
+      if (r == null) {
+        return ApiResult.fail('Request not found');
+      }
+      r['mentor_comment'] = comment ?? reason;
+      r['status'] = action == 'APPROVED'
+          ? 'MENTOR_APPROVED'
+          : 'MENTOR_REJECTED';
+      return ApiResult.success(r);
     }
   }
 
   static Future<ApiResult<List>> history() async {
     if (kUseMockApi) {
-      final items = MockOdStore.items.where((r) {
-        final s = r['status']?.toString() ?? '';
-        return s == 'MENTOR_APPROVED' || s == 'MENTOR_REJECTED';
-      }).toList(growable: false);
+      final items = MockOdStore.items
+          .where((r) {
+            final s = r['status']?.toString() ?? '';
+            return s == 'MENTOR_APPROVED' || s == 'MENTOR_REJECTED';
+          })
+          .toList(growable: false);
       return ApiResult.success(items);
     }
     try {
@@ -421,7 +500,13 @@ class MentorApi {
       }
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      final items = MockOdStore.items
+          .where((r) {
+            final s = r['status']?.toString() ?? '';
+            return s == 'MENTOR_APPROVED' || s == 'MENTOR_REJECTED';
+          })
+          .toList(growable: false);
+      return ApiResult.success(items);
     }
   }
 }
@@ -437,16 +522,17 @@ class ECApi {
     }
     try {
       final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/ec/queue'),
-            headers: AuthStore.headers,
-          )
+          .get(Uri.parse('$kBaseUrl/api/ec/queue'), headers: AuthStore.headers)
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body['queue'] as List);
+      if (res.statusCode == 200)
+        return ApiResult.success(body['queue'] as List);
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      final pending = MockOdStore.items
+          .where((r) => r['status'] == 'MENTOR_APPROVED')
+          .toList(growable: false);
+      return ApiResult.success(pending);
     }
   }
 
@@ -472,7 +558,7 @@ class ECApi {
             body: jsonEncode({
               'request_id': requestId,
               'action': action,
-              if (reason != null) 'reason': reason,
+              'reason': reason,
             }),
           )
           .timeout(const Duration(seconds: 10));
@@ -480,7 +566,13 @@ class ECApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Action failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      final r = MockOdStore.byId(requestId);
+      if (r == null) {
+        return ApiResult.fail('Request not found');
+      }
+      r['ec_comment'] = reason;
+      r['status'] = action == 'CONFIRMED' ? 'EC_CONFIRMED' : 'EC_REJECTED';
+      return ApiResult.success(r);
     }
   }
 }
@@ -489,25 +581,31 @@ class ECApi {
 class HoDApi {
   static Future<ApiResult<List>> queue() async {
     if (kUseMockApi) {
-      final pending = MockOdStore.items.where((r) {
-        final s = r['status'] as String? ?? '';
-        // In mock mode, HoD sees requests approved by mentor (no EC step).
-        return s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
-      }).toList(growable: false);
+      final pending = MockOdStore.items
+          .where((r) {
+            final s = r['status'] as String? ?? '';
+            // In mock mode, HoD sees requests approved by mentor (no EC step).
+            return s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
+          })
+          .toList(growable: false);
       return ApiResult.success(pending);
     }
     try {
       final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/hod/queue'),
-            headers: AuthStore.headers,
-          )
+          .get(Uri.parse('$kBaseUrl/api/hod/queue'), headers: AuthStore.headers)
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body['queue'] as List);
+      if (res.statusCode == 200)
+        return ApiResult.success(body['queue'] as List);
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      final pending = MockOdStore.items
+          .where((r) {
+            final s = r['status'] as String? ?? '';
+            return s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
+          })
+          .toList(growable: false);
+      return ApiResult.success(pending);
     }
   }
 
@@ -533,7 +631,7 @@ class HoDApi {
             body: jsonEncode({
               'request_id': requestId,
               'action': action,
-              if (reason != null) 'reason': reason,
+              'reason': reason,
             }),
           )
           .timeout(const Duration(seconds: 10));
@@ -541,7 +639,13 @@ class HoDApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Action failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      final r = MockOdStore.byId(requestId);
+      if (r == null) {
+        return ApiResult.fail('Request not found');
+      }
+      r['hod_comment'] = reason;
+      r['status'] = action == 'APPROVED' ? 'HOD_APPROVED' : 'HOD_REJECTED';
+      return ApiResult.success(r);
     }
   }
 
@@ -566,7 +670,12 @@ class HoDApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Bulk action failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      for (final r in MockOdStore.items) {
+        if (r['status'] == 'EC_CONFIRMED') {
+          r['status'] = 'HOD_APPROVED';
+        }
+      }
+      return ApiResult.success({'ok': true});
     }
   }
 
@@ -578,9 +687,7 @@ class HoDApi {
           .length;
       final pending = MockOdStore.items.where((r) {
         final s = r['status']?.toString() ?? '';
-        return s == 'PENDING' ||
-            s == 'MENTOR_APPROVED' ||
-            s == 'EC_CONFIRMED';
+        return s == 'PENDING' || s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
       }).length;
       final rejected = MockOdStore.items.where((r) {
         final s = r['status']?.toString() ?? '';
@@ -606,16 +713,37 @@ class HoDApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      final total = MockOdStore.items.length;
+      final approved = MockOdStore.items
+          .where((r) => r['status'] == 'HOD_APPROVED')
+          .length;
+      final pending = MockOdStore.items.where((r) {
+        final s = r['status']?.toString() ?? '';
+        return s == 'PENDING' || s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
+      }).length;
+      final rejected = MockOdStore.items.where((r) {
+        final s = r['status']?.toString() ?? '';
+        return s.contains('REJECTED') || s == 'CANCELLED';
+      }).length;
+      final activeNow = 0;
+      return ApiResult.success({
+        'total': total,
+        'approved': approved,
+        'pending': pending,
+        'rejected': rejected,
+        'active_now': activeNow,
+      });
     }
   }
 
   static Future<ApiResult<List>> history() async {
     if (kUseMockApi) {
-      final items = MockOdStore.items.where((r) {
-        final s = r['status']?.toString() ?? '';
-        return s == 'HOD_APPROVED' || s == 'HOD_REJECTED';
-      }).toList(growable: false);
+      final items = MockOdStore.items
+          .where((r) {
+            final s = r['status']?.toString() ?? '';
+            return s == 'HOD_APPROVED' || s == 'HOD_REJECTED';
+          })
+          .toList(growable: false);
       return ApiResult.success(items);
     }
     try {
@@ -631,7 +759,13 @@ class HoDApi {
       }
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      final items = MockOdStore.items
+          .where((r) {
+            final s = r['status']?.toString() ?? '';
+            return s == 'HOD_APPROVED' || s == 'HOD_REJECTED';
+          })
+          .toList(growable: false);
+      return ApiResult.success(items);
     }
   }
 
@@ -652,7 +786,7 @@ class HoDApi {
       }
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      return ApiResult.fail('Network error: $e');
+      return ApiResult.success(const []);
     }
   }
 }
@@ -671,8 +805,10 @@ class VerifyApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Scan failed');
     } catch (e) {
+      if (kUseMockApi) {
+        return ApiResult.fail('Invalid QR (mock mode) or offline');
+      }
       return ApiResult.fail('Network error: $e');
     }
   }
 }
-

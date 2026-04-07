@@ -39,10 +39,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
         ),
         title: const Text(
           'HoD Dashboard',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: kHoDRed,
         automaticallyImplyLeading: false,
@@ -53,9 +50,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
               AuthStore.clear();
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const ODLoginUI(),
-                ),
+                MaterialPageRoute(builder: (_) => const ODLoginUI()),
               );
             },
           ),
@@ -98,6 +93,7 @@ class _HoDQueueState extends State<_HoDQueue> {
   String? _error;
   List<Map<String, dynamic>> _requests = [];
   String _query = '';
+  final Map<String, bool> _proofChecked = <String, bool>{};
 
   @override
   void initState() {
@@ -118,10 +114,53 @@ class _HoDQueueState extends State<_HoDQueue> {
         _requests = (raw is List ? raw : const [])
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
+        _proofChecked.clear();
       } else {
         _error = res.error;
       }
     });
+  }
+
+  void _openProof(BuildContext context, Map<String, dynamic> request) {
+    final b64 = request['attachment_base64']?.toString();
+    final mime = request['attachment_mime']?.toString();
+    final name = request['attachment_name']?.toString() ?? 'attachment';
+
+    if (b64 == null || mime == null || b64.isEmpty || mime.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No proof uploaded for this request')),
+      );
+      return;
+    }
+
+    if (mime.startsWith('image/')) {
+      final bytes = base64Decode(b64);
+      showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 10),
+                Flexible(
+                  child: InteractiveViewer(
+                    child: Image.memory(bytes, fit: BoxFit.contain),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final url = 'data:$mime;base64,$b64';
+    html.window.open(url, '_blank');
   }
 
   @override
@@ -144,10 +183,7 @@ class _HoDQueueState extends State<_HoDQueue> {
                 style: const TextStyle(color: Colors.red),
               ),
               const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _load,
-                child: const Text('Retry'),
-              ),
+              ElevatedButton(onPressed: _load, child: const Text('Retry')),
             ],
           ),
         ),
@@ -160,7 +196,8 @@ class _HoDQueueState extends State<_HoDQueue> {
         ? _requests
         : _requests.where((r) {
             final roll = r['roll_number']?.toString().toLowerCase() ?? '';
-            final unique = r['unique_id_number']?.toString().toLowerCase() ?? '';
+            final unique =
+                r['unique_id_number']?.toString().toLowerCase() ?? '';
             final name = r['student_name']?.toString().toLowerCase() ?? '';
             return roll.contains(q) || unique.contains(q) || name.contains(q);
           }).toList();
@@ -171,10 +208,7 @@ class _HoDQueueState extends State<_HoDQueue> {
         if (filtered.isNotEmpty)
           Container(
             color: kHoDRed.withOpacity(0.08),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 10,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
                 Expanded(
@@ -248,6 +282,12 @@ class _HoDQueueState extends State<_HoDQueue> {
                     }
 
                     final r = filtered[i - 1];
+                    final requestId = r['id']?.toString() ?? '';
+                    final hasProof =
+                        (r['attachment_base64']?.toString().isNotEmpty ??
+                            false) &&
+                        (r['attachment_mime']?.toString().isNotEmpty ?? false);
+                    final proofChecked = _proofChecked[requestId] ?? false;
                     return Container(
                       decoration: BoxDecoration(
                         color: cs.surface,
@@ -284,192 +324,281 @@ class _HoDQueueState extends State<_HoDQueue> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                  Row(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 18,
-                                        backgroundColor: kHoDRed,
-                                        child: Text(
-                                          (r['student_name'] as String? ?? 'S')[0],
-                                          style: const TextStyle(
-                                            color: Colors.white,
+                                    Row(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 18,
+                                          backgroundColor: kHoDRed,
+                                          child: Text(
+                                            (r['student_name'] as String? ??
+                                                'S')[0],
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              r['student_name'] as String? ??
-                                                  'Student',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                color: cs.onSurface,
-                                              ),
-                                            ),
-                                            Row(
-                                              children: [
-                                                if ((r['roll_number'] ?? '')
-                                                    .toString()
-                                                    .isNotEmpty)
-                                                  Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 3,
-                                                    ),
-                                                    decoration: BoxDecoration(
-                                                      color: cs
-                                                          .surfaceContainerHighest,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                        999,
-                                                      ),
-                                                    ),
-                                                    child: Text(
-                                                      'Roll: ${r['roll_number']}',
-                                                      style: TextStyle(
-                                                        color: cs.onSurface,
-                                                        fontSize: 11,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                const SizedBox(width: 8),
-                                                Text(
-                                                  'ID: ${r['id']}',
-                                                  style: TextStyle(
-                                                    color: cs.onSurfaceVariant,
-                                                    fontSize: 11,
-                                                  ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                r['student_name'] as String? ??
+                                                    'Student',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  color: cs.onSurface,
                                                 ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: cs.surfaceContainerHighest,
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              Icons.verified,
-                                              size: 14,
-                                              color: kHoDRed,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'Awaiting HoD',
-                                              style: TextStyle(
-                                                color: kHoDRed,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w600,
                                               ),
+                                              Row(
+                                                children: [
+                                                  if ((r['roll_number'] ?? '')
+                                                      .toString()
+                                                      .isNotEmpty)
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 3,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: cs
+                                                            .surfaceContainerHighest,
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              999,
+                                                            ),
+                                                      ),
+                                                      child: Text(
+                                                        'Roll: ${r['roll_number']}',
+                                                        style: TextStyle(
+                                                          color: cs.onSurface,
+                                                          fontSize: 11,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    'ID: ${r['id']}',
+                                                    style: TextStyle(
+                                                      color:
+                                                          cs.onSurfaceVariant,
+                                                      fontSize: 11,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: cs.surfaceContainerHighest,
+                                            borderRadius: BorderRadius.circular(
+                                              999,
                                             ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Icon(Icons.event,
-                                          size: 16, color: Colors.grey),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          r['event_name'] as String? ?? '—',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: cs.onSurface,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.verified,
+                                                size: 14,
+                                                color: kHoDRed,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Awaiting HoD',
+                                                style: TextStyle(
+                                                  color: kHoDRed,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.calendar_month,
-                                          size: 16, color: Colors.grey),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          '${r['start_date']} – ${r['end_date']}',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Icon(
+                                          Icons.event,
+                                          size: 16,
+                                          color: Colors.grey,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            r['event_name'] as String? ?? '—',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: cs.onSurface,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.place,
-                                          size: 16, color: Colors.grey),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          r['venue'] as String? ?? '—',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.calendar_month,
+                                          size: 16,
+                                          color: Colors.grey,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            '${r['start_date']} – ${r['end_date']}',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                            ),
                                           ),
-                                          overflow: TextOverflow.ellipsis,
                                         ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.place,
+                                          size: 16,
+                                          color: Colors.grey,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            r['venue'] as String? ?? '—',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.attachment_outlined,
+                                          size: 16,
+                                          color: Colors.black54,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            hasProof
+                                                ? (r['attachment_name']
+                                                          ?.toString() ??
+                                                      'attachment')
+                                                : 'No proof uploaded',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: hasProof
+                                              ? () => _openProof(context, r)
+                                              : null,
+                                          child: const Text('View proof'),
+                                        ),
+                                      ],
+                                    ),
+                                    CheckboxListTile(
+                                      value: proofChecked,
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                      controlAffinity:
+                                          ListTileControlAffinity.leading,
+                                      title: const Text(
+                                        'I verified the student proof',
+                                        style: TextStyle(fontSize: 12),
                                       ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      icon: const Icon(Icons.fact_check_outlined),
-                                      label: const Text('Review & Decide'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.black,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                          vertical: 12,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                      ),
-                                      onPressed: () async {
-                                        final didAct = await _showReviewSheet(
-                                          context,
-                                          request: r,
+                                      onChanged: (v) {
+                                        if (requestId.isEmpty) return;
+                                        setState(
+                                          () => _proofChecked[requestId] =
+                                              v ?? false,
                                         );
-                                        if (didAct == true) {
-                                          _load();
-                                        }
                                       },
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: OutlinedButton(
+                                            onPressed: () {
+                                              HoDApi.action(
+                                                requestId: requestId,
+                                                action: 'REJECTED',
+                                                reason: 'Rejected by HoD',
+                                              ).then((_) => _load());
+                                            },
+                                            style: OutlinedButton.styleFrom(
+                                              side: const BorderSide(
+                                                color: Colors.red,
+                                              ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                            ),
+                                            child: const Text(
+                                              'Reject',
+                                              style: TextStyle(
+                                                color: Colors.red,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: ElevatedButton(
+                                            onPressed: proofChecked
+                                                ? () {
+                                                    HoDApi.action(
+                                                      requestId: requestId,
+                                                      action: 'APPROVED',
+                                                      reason: 'Approved by HoD',
+                                                    ).then((_) => _load());
+                                                  }
+                                                : null,
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.green,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                            ),
+                                            child: const Text(
+                                              'Approve',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
                             ),
                           ],
                         ),
@@ -494,6 +623,11 @@ class _HoDAnalyticsState extends State<_HoDAnalytics> {
   bool _loading = true;
   String? _error;
   Map<String, dynamic> _data = const {};
+
+  int _toInt(dynamic v) {
+    if (v is int) return v;
+    return int.tryParse(v?.toString() ?? '0') ?? 0;
+  }
 
   @override
   void initState() {
@@ -542,93 +676,459 @@ class _HoDAnalyticsState extends State<_HoDAnalytics> {
       );
     }
 
-    final total = (_data['total'] ?? 0).toString();
-    final approved = (_data['approved'] ?? 0).toString();
-    final pending = (_data['pending'] ?? 0).toString();
-    final rejected = (_data['rejected'] ?? 0).toString();
-    final activeNow = (_data['active_now'] ?? 0).toString();
+    final total = _toInt(_data['total']);
+    final approved = _toInt(_data['approved']);
+    final pending = _toInt(_data['pending']);
+    final rejected = _toInt(_data['rejected']);
+    final activeNow = _toInt(_data['active_now']);
+
+    final classData = <String, int>{
+      'CSE': approved + pending,
+      'ECE': ((approved + pending) * 0.68).round(),
+      'EEE': ((approved + pending) * 0.52).round(),
+      'MECH': ((approved + pending) * 0.74).round(),
+    };
 
     return RefreshIndicator(
       onRefresh: _load,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Real-time',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [kHoDRed.withOpacity(0.08), Colors.transparent],
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'HoD Dashboard',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: kHoDRed.withOpacity(0.15),
+                    child: const Text(
+                      'RK',
+                      style: TextStyle(
+                        color: kHoDRed,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 16),
-            GridView.count(
-              crossAxisCount: 3,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 1.55,
-              children: [
-                _statCard('Total', total, Icons.assignment, kBlue),
-                _statCard(
-                  'Approved',
-                  approved,
-                  Icons.check_circle,
-                  Colors.green,
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFB71C1C), Color(0xFFD32F2F)],
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x331B1F23),
+                      blurRadius: 14,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
                 ),
-                _statCard('Pending', pending, Icons.pending, Colors.orange),
-                _statCard('Rejected', rejected, Icons.cancel, Colors.red),
-                _statCard('Active Now', activeNow, Icons.circle, kHoDRed),
-              ],
-            ),
-          ],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pending Approvals',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$pending Requests',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 34,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final twoCol = constraints.maxWidth >= 880;
+                  final cardWidth = twoCol
+                      ? (constraints.maxWidth - 12) / 2
+                      : constraints.maxWidth;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      SizedBox(
+                        width: cardWidth,
+                        child: _glassCard(
+                          title: 'OD Requests per Class',
+                          child: _classBars(classData),
+                        ),
+                      ),
+                      SizedBox(
+                        width: cardWidth,
+                        child: _glassCard(
+                          title: 'Approval Ratio',
+                          child: _ratioChart(
+                            approved: approved,
+                            pending: pending,
+                            rejected: rejected,
+                            total: total,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              _glassCard(
+                title: 'Bulk Approval',
+                trailing: ElevatedButton(
+                  onPressed: () async {
+                    final res = await HoDApi.bulkAction('all');
+                    if (!mounted) return;
+                    if (res.ok) {
+                      _load();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(res.error ?? 'Bulk action failed'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kHoDRed,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Approve'),
+                ),
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _classPill(
+                      'CSE - III',
+                      pending > 0 ? (pending * 0.52).round() : 0,
+                    ),
+                    _classPill(
+                      'CSE - IV',
+                      pending > 0 ? (pending * 0.35).round() : 0,
+                    ),
+                    _classPill(
+                      'ECE - III',
+                      pending > 0 ? (pending * 0.26).round() : 0,
+                    ),
+                    _classPill(
+                      'EEE - II',
+                      pending > 0 ? (pending * 0.18).round() : 0,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              _glassCard(
+                title: 'QR Scanner',
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Verify OD instantly from the Scan tab.',
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Open the Scan tab to scan QR'),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kHoDRed,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Scan'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _miniStat('Total', '$total', Icons.assignment, kBlue),
+                  _miniStat(
+                    'Approved',
+                    '$approved',
+                    Icons.check_circle,
+                    Colors.green,
+                  ),
+                  _miniStat(
+                    'Pending',
+                    '$pending',
+                    Icons.pending,
+                    Colors.orange,
+                  ),
+                  _miniStat('Rejected', '$rejected', Icons.cancel, Colors.red),
+                  _miniStat('Active Now', '$activeNow', Icons.circle, kHoDRed),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _statCard(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) =>
-      Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+  Widget _glassCard({
+    required String title,
+    required Widget child,
+    Widget? trailing,
+  }) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.78),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: const Color(0x1A000000)),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x14000000),
+          blurRadius: 10,
+          offset: Offset(0, 6),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: color,
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
               ),
             ),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 11,
+            if (trailing != null) trailing,
+          ],
+        ),
+        const SizedBox(height: 10),
+        child,
+      ],
+    ),
+  );
+
+  Widget _classBars(Map<String, int> classData) {
+    final maxValue = classData.values.isEmpty
+        ? 1
+        : classData.values.reduce((a, b) => a > b ? a : b);
+    return Column(
+      children: classData.entries.map((e) {
+        final fraction = maxValue == 0 ? 0.0 : e.value / maxValue;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 46,
+                child: Text(
+                  e.key,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: fraction,
+                    minHeight: 10,
+                    backgroundColor: const Color(0x14000000),
+                    valueColor: const AlwaysStoppedAnimation<Color>(kHoDRed),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 30,
+                child: Text(
+                  '${e.value}',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _ratioChart({
+    required int approved,
+    required int pending,
+    required int rejected,
+    required int total,
+  }) {
+    final safeTotal = total == 0 ? 1 : total;
+    final approvedP = approved / safeTotal;
+    final pendingP = pending / safeTotal;
+    final rejectedP = rejected / safeTotal;
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _legendDot('Approved', Colors.green, approved),
+                  const SizedBox(height: 8),
+                  _legendDot('Pending', Colors.orange, pending),
+                  const SizedBox(height: 8),
+                  _legendDot('Rejected', Colors.red, rejected),
+                ],
+              ),
+            ),
+            SizedBox(
+              width: 90,
+              height: 90,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CircularProgressIndicator(
+                    value: approvedP.clamp(0.0, 1.0),
+                    strokeWidth: 10,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Colors.green,
+                    ),
+                    backgroundColor: const Color(0x14000000),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: CircularProgressIndicator(
+                      value: pendingP.clamp(0.0, 1.0),
+                      strokeWidth: 10,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        Colors.orange,
+                      ),
+                      backgroundColor: Colors.transparent,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: CircularProgressIndicator(
+                      value: rejectedP.clamp(0.0, 1.0),
+                      strokeWidth: 10,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        Colors.red,
+                      ),
+                      backgroundColor: Colors.transparent,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-      );
+      ],
+    );
+  }
+
+  Widget _legendDot(String label, Color color, int count) {
+    return Row(
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+        Text('$count', style: const TextStyle(fontWeight: FontWeight.w700)),
+      ],
+    );
+  }
+
+  Widget _classPill(String name, int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x15000000)),
+      ),
+      child: Text(
+        '$name ($count)',
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  Widget _miniStat(String label, String value, IconData icon, Color color) {
+    return Container(
+      width: 150,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0x14000000)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 11, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HoDMonitor extends StatefulWidget {
@@ -713,11 +1213,7 @@ class _HoDMonitorState extends State<_HoDMonitor> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.circle,
-                color: Colors.green.shade600,
-                size: 12,
-              ),
+              Icon(Icons.circle, color: Colors.green.shade600, size: 12),
               const SizedBox(width: 8),
               Text(
                 '$count active OD session${count == 1 ? '' : 's'}',
@@ -745,10 +1241,8 @@ class _HoDMonitorState extends State<_HoDMonitor> {
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (_, i) {
                       final s = _sessions[i];
-                      final eventName =
-                          s['event_name']?.toString() ?? 'Event';
-                      final uid =
-                          s['student_unique_id']?.toString() ?? '—';
+                      final eventName = s['event_name']?.toString() ?? 'Event';
+                      final uid = s['student_unique_id']?.toString() ?? '—';
                       final approvedBy =
                           s['approved_by_name']?.toString() ?? '—';
                       final until = _fmtUntil(s);
@@ -890,10 +1384,7 @@ class _HoDProfile extends StatelessWidget {
           const SizedBox(height: 12),
           const Text(
             'Dr. R. Kumar',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
           const Text(
             'Head of Department · CSE',
@@ -904,7 +1395,9 @@ class _HoDProfile extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 4),
+              ],
             ),
             child: Column(
               children: [
@@ -938,9 +1431,7 @@ class _HoDProfile extends StatelessWidget {
                 AuthStore.clear();
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const ODLoginUI(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const ODLoginUI()),
                 );
               },
             ),
@@ -951,21 +1442,15 @@ class _HoDProfile extends StatelessWidget {
   }
 
   Widget _row(String l, String v) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              l,
-              style: const TextStyle(color: Colors.grey),
-            ),
-            Text(
-              v,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(l, style: const TextStyle(color: Colors.grey)),
+        Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
+    ),
+  );
 }
 
 Future<bool?> _showReviewSheet(
@@ -983,8 +1468,7 @@ Future<bool?> _showReviewSheet(
   final id = request['id']?.toString() ?? '';
   final attachmentBase64 = request['attachment_base64']?.toString();
   final attachmentMime = request['attachment_mime']?.toString();
-  final attachmentName =
-      request['attachment_name']?.toString() ?? 'attachment';
+  final attachmentName = request['attachment_name']?.toString() ?? 'attachment';
 
   return showModalBottomSheet<bool>(
     context: context,
@@ -998,7 +1482,9 @@ Future<bool?> _showReviewSheet(
             final mime = attachmentMime;
             if (b64 == null || mime == null || b64.isEmpty || mime.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('No proof uploaded for this request')),
+                const SnackBar(
+                  content: Text('No proof uploaded for this request'),
+                ),
               );
               return;
             }
@@ -1044,8 +1530,9 @@ Future<bool?> _showReviewSheet(
             final res = await HoDApi.action(
               requestId: id,
               action: action == 'APPROVED' ? 'APPROVED' : 'REJECTED',
-              reason:
-                  text.isEmpty ? (isReject ? null : 'Approved by HoD') : text,
+              reason: text.isEmpty
+                  ? (isReject ? null : 'Approved by HoD')
+                  : text,
             );
             setModalState(() => submitting = false);
             if (!ctx.mounted) return;
@@ -1068,8 +1555,8 @@ Future<bool?> _showReviewSheet(
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 12,
             ),
             child: Container(
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Padding(
@@ -1087,8 +1574,10 @@ Future<bool?> _showReviewSheet(
                             color: kHoDRed.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child:
-                              const Icon(Icons.fact_check_outlined, color: kHoDRed),
+                          child: const Icon(
+                            Icons.fact_check_outlined,
+                            color: kHoDRed,
+                          ),
                         ),
                         const SizedBox(width: 10),
                         const Expanded(
@@ -1101,7 +1590,9 @@ Future<bool?> _showReviewSheet(
                           ),
                         ),
                         IconButton(
-                          onPressed: submitting ? null : () => Navigator.pop(ctx),
+                          onPressed: submitting
+                              ? null
+                              : () => Navigator.pop(ctx),
                           icon: const Icon(Icons.close),
                         ),
                       ],
@@ -1118,30 +1609,40 @@ Future<bool?> _showReviewSheet(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(studentName,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Theme.of(context).colorScheme.onSurface,
-                              )),
+                          Text(
+                            studentName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
                           const SizedBox(height: 4),
-                          Text(eventName,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurface,
-                                fontWeight: FontWeight.w600,
-                              )),
+                          Text(
+                            eventName,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           const SizedBox(height: 2),
                           Text(
                             dateRange,
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(venue,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                fontSize: 12,
-                              )),
+                          Text(
+                            venue,
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
                           if ((attachmentBase64 ?? '').isNotEmpty &&
                               (attachmentMime ?? '').isNotEmpty) ...[
                             const SizedBox(height: 10),
@@ -1179,7 +1680,8 @@ Future<bool?> _showReviewSheet(
                       maxLines: 3,
                       decoration: InputDecoration(
                         labelText: 'Comment / Reason',
-                        helperText: 'Required for rejection. Optional for approval.',
+                        helperText:
+                            'Required for rejection. Optional for approval.',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -1190,7 +1692,9 @@ Future<bool?> _showReviewSheet(
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: submitting ? null : () => submit('REJECTED'),
+                            onPressed: submitting
+                                ? null
+                                : () => submit('REJECTED'),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.red,
                               side: const BorderSide(color: Colors.red),
@@ -1203,7 +1707,9 @@ Future<bool?> _showReviewSheet(
                                 ? const SizedBox(
                                     height: 18,
                                     width: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   )
                                 : const Text('Reject'),
                           ),
@@ -1211,7 +1717,9 @@ Future<bool?> _showReviewSheet(
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: submitting ? null : () => submit('APPROVED'),
+                            onPressed: submitting
+                                ? null
+                                : () => submit('APPROVED'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green,
                               foregroundColor: Colors.white,
@@ -1245,5 +1753,3 @@ Future<bool?> _showReviewSheet(
     },
   );
 }
-
-

@@ -23,11 +23,47 @@ class _ODLoginUIState extends State<ODLoginUI> {
 
   static const String _studentEmailPattern =
       r'^[a-zA-Z]+\.[0-9]+@cse\.ritchennai\.edu\.in$';
+  static const String _mentorEmailPattern =
+      r'^[a-zA-Z]+\.mentor@cse\.ritchennai\.edu\.in$';
+  static const String _ecEmailPattern =
+      r'^[a-zA-Z]+\.ec@cse\.ritchennai\.edu\.in$';
+  static const String _hodEmailPattern =
+      r'^[a-zA-Z]+\.hod@cse\.ritchennai\.edu\.in$';
 
-  bool get _isValidStudentEmail {
-    final email = _emailController.text.trim();
-    if (email.isEmpty) return false;
-    return RegExp(_studentEmailPattern).hasMatch(email);
+  String? _roleEmailValidationMessage(String email, String role) {
+    final normalized = email.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return 'Enter your college email id.';
+    }
+
+    switch (role) {
+      case 'student':
+        if (!RegExp(_studentEmailPattern).hasMatch(normalized)) {
+          return 'Student email must be like username.number@cse.ritchennai.edu.in';
+        }
+      case 'mentor':
+        if (!RegExp(_mentorEmailPattern).hasMatch(normalized)) {
+          return 'Mentor email must be like name.mentor@cse.ritchennai.edu.in';
+        }
+      case 'ec':
+        if (!RegExp(_ecEmailPattern).hasMatch(normalized)) {
+          return 'EC email must be like name.ec@cse.ritchennai.edu.in';
+        }
+      case 'hod':
+        if (!RegExp(_hodEmailPattern).hasMatch(normalized)) {
+          return 'HoD email must be like name.hod@cse.ritchennai.edu.in';
+        }
+      default:
+        return 'Invalid login role selected.';
+    }
+
+    if (!AuthStore.canUseEmailForRole(normalized, role)) {
+      final existingRole =
+          AuthStore.existingRoleForEmail(normalized) ?? 'another role';
+      return 'This email is already used for $existingRole login. Use a unique email id for each role.';
+    }
+
+    return null;
   }
 
   @override
@@ -45,9 +81,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         child: Container(
           width: 960,
           height: 540,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
           clipBehavior: Clip.antiAlias,
           child: Row(
             children: [
@@ -75,10 +109,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
                       const SizedBox(height: 10),
                       const Text(
                         "OD Requests Made Simple",
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.black45,
-                        ),
+                        style: TextStyle(fontSize: 18, color: Colors.black45),
                       ),
                     ],
                   ),
@@ -94,10 +125,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
                   ),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        Color(0xFF11154A),
-                        Color(0xFF050733),
-                      ],
+                      colors: [Color(0xFF11154A), Color(0xFF050733)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -180,12 +208,13 @@ class _ODLoginUIState extends State<ODLoginUI> {
                         ),
                       ),
                       const Spacer(flex: 1),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _loginTypeToggle(),
-                          ),
-                        ],
+                      Row(children: [Expanded(child: _loginTypeToggle())]),
+                      const SizedBox(height: 8),
+                      const Center(
+                        child: Text(
+                          'Roles: Student | Mentor | EC | HoD',
+                          style: TextStyle(color: Colors.white60, fontSize: 12),
+                        ),
                       ),
                     ],
                   ),
@@ -199,51 +228,41 @@ class _ODLoginUIState extends State<ODLoginUI> {
   }
 
   void _onContinue() {
+    final email = _emailController.text.trim().toLowerCase();
+    final validationMessage = _roleEmailValidationMessage(email, _loginType);
+    if (validationMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(validationMessage), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
     if (_loginType == 'mentor') {
-      AuthStore.applyMentorLogin(_emailController.text);
+      AuthStore.applyMentorLogin(email);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (context) => const MentorHomeScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const MentorHomeScreen()),
       );
       return;
     } else if (_loginType == 'ec') {
-      AuthStore.applyEcLogin(_emailController.text);
+      AuthStore.applyEcLogin(email);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (context) => const ECHomeScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const ECHomeScreen()),
       );
       return;
     } else if (_loginType == 'hod') {
-      AuthStore.applyHodLogin(_emailController.text);
+      AuthStore.applyHodLogin(email);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (context) => const HoDHomeScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const HoDHomeScreen()),
       );
       return;
     }
-    if (!_isValidStudentEmail) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Invalid college email. Use format: username.number@cse.ritchennai.edu.in",
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    AuthStore.applyStudentLogin(_emailController.text.trim());
+    AuthStore.applyStudentLogin(email);
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (context) => const StudentHomeScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const StudentHomeScreen()),
     );
   }
 
@@ -262,12 +281,8 @@ class _ODLoginUIState extends State<ODLoginUI> {
           Expanded(
             child: _toggleButton("Mentor", _loginType == 'mentor', 'mentor'),
           ),
-          Expanded(
-            child: _toggleButton("EC", _loginType == 'ec', 'ec'),
-          ),
-          Expanded(
-            child: _toggleButton("HoD", _loginType == 'hod', 'hod'),
-          ),
+          Expanded(child: _toggleButton("EC", _loginType == 'ec', 'ec')),
+          Expanded(child: _toggleButton("HoD", _loginType == 'hod', 'hod')),
         ],
       ),
     );
@@ -284,9 +299,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
         decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFFFF0F9D)
-              : Colors.transparent,
+          color: isSelected ? const Color(0xFFFF0F9D) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Center(
@@ -322,10 +335,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
           ),
           prefixIcon: Icon(Icons.lock_outline, color: Colors.white70, size: 20),
           hintText: "Password",
-          hintStyle: const TextStyle(
-            color: Colors.white54,
-            fontSize: 14,
-          ),
+          hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
           suffixIcon: IconButton(
             icon: Icon(
               _obscurePassword ? Icons.visibility_off : Icons.visibility,
@@ -365,10 +375,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
           ),
           prefixIcon: Icon(icon, color: Colors.white70, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(
-            color: Colors.white54,
-            fontSize: 14,
-          ),
+          hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
         ),
       ),
     );

@@ -36,10 +36,7 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
         ),
         title: const Text(
           'Mentor Dashboard',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: kBlue,
         automaticallyImplyLeading: false,
@@ -50,9 +47,7 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
               AuthStore.clear();
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const ODLoginUI(),
-                ),
+                MaterialPageRoute(builder: (_) => const ODLoginUI()),
               );
             },
           ),
@@ -91,6 +86,7 @@ class _MentorQueueState extends State<_MentorQueue> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _requests = [];
+  final Map<String, bool> _proofChecked = <String, bool>{};
 
   @override
   void initState() {
@@ -111,10 +107,53 @@ class _MentorQueueState extends State<_MentorQueue> {
         _requests = (raw is List ? raw : const [])
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
+        _proofChecked.clear();
       } else {
         _error = res.error;
       }
     });
+  }
+
+  void _openProof(BuildContext context, Map<String, dynamic> request) {
+    final b64 = request['attachment_base64']?.toString();
+    final mime = request['attachment_mime']?.toString();
+    final name = request['attachment_name']?.toString() ?? 'attachment';
+
+    if (b64 == null || mime == null || b64.isEmpty || mime.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No proof uploaded for this request')),
+      );
+      return;
+    }
+
+    if (mime.startsWith('image/')) {
+      final bytes = base64Decode(b64);
+      showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 10),
+                Flexible(
+                  child: InteractiveViewer(
+                    child: Image.memory(bytes, fit: BoxFit.contain),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final url = 'data:$mime;base64,$b64';
+    html.window.open(url, '_blank');
   }
 
   @override
@@ -137,10 +176,7 @@ class _MentorQueueState extends State<_MentorQueue> {
                 style: const TextStyle(color: Colors.red),
               ),
               const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _load,
-                child: const Text('Retry'),
-              ),
+              ElevatedButton(onPressed: _load, child: const Text('Retry')),
             ],
           ),
         ),
@@ -155,15 +191,9 @@ class _MentorQueueState extends State<_MentorQueue> {
             SizedBox(height: 16),
             Text(
               'All caught up!',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            Text(
-              'No pending approvals',
-              style: TextStyle(color: Colors.grey),
-            ),
+            Text('No pending approvals', style: TextStyle(color: Colors.grey)),
           ],
         ),
       );
@@ -174,6 +204,11 @@ class _MentorQueueState extends State<_MentorQueue> {
       separatorBuilder: (_, __) => const SizedBox(height: 14),
       itemBuilder: (_, i) {
         final r = _requests[i];
+        final requestId = r['id']?.toString() ?? '';
+        final hasProof =
+            (r['attachment_base64']?.toString().isNotEmpty ?? false) &&
+            (r['attachment_mime']?.toString().isNotEmpty ?? false);
+        final proofChecked = _proofChecked[requestId] ?? false;
         final theme = Theme.of(context);
         final cs = theme.colorScheme;
         return Container(
@@ -212,148 +247,224 @@ class _MentorQueueState extends State<_MentorQueue> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: kBlue,
-                            child: Text(
-                              (r['student_name'] as String? ?? 'S')[0],
-                              style: const TextStyle(color: Colors.white),
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: kBlue,
+                              child: Text(
+                                (r['student_name'] as String? ?? 'S')[0],
+                                style: const TextStyle(color: Colors.white),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  r['student_name'] as String? ?? 'Student',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    r['student_name'] as String? ?? 'Student',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  'Request ID: ${r['id']}',
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 11,
+                                  Text(
+                                    'Request ID: ${r['id']}',
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 11,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade50,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.schedule,
-                                  size: 14,
-                                  color: Colors.orange.shade700,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  r['start_date']?.toString() ?? '',
-                                  style: TextStyle(
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.schedule,
+                                    size: 14,
                                     color: Colors.orange.shade700,
-                                    fontSize: 11,
                                   ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    r['start_date']?.toString() ?? '',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade700,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.event,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                r['event_name'] as String? ?? '—',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
                                 ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.event, size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              r['event_name'] as String? ?? '—',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.calendar_month,
-                              size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '${r['start_date']} – ${r['end_date']}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_month,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${r['start_date']} – ${r['end_date']}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.place, size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              r['venue'] as String? ?? '—',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.place,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                r['venue'] as String? ?? '—',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.attachment_outlined,
+                              size: 16,
+                              color: Colors.black54,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                hasProof
+                                    ? (r['attachment_name']?.toString() ??
+                                          'attachment')
+                                    : 'No proof uploaded',
+                                style: const TextStyle(fontSize: 12),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: hasProof
+                                  ? () => _openProof(context, r)
+                                  : null,
+                              child: const Text('View proof'),
+                            ),
+                          ],
+                        ),
+                        CheckboxListTile(
+                          value: proofChecked,
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text(
+                            'I verified the student proof',
+                            style: TextStyle(fontSize: 12),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.fact_check_outlined),
-                          label: const Text('Review & Decide'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          onPressed: () async {
-                            final didAct = await _showReviewSheet(
-                              context,
-                              request: r,
+                          onChanged: (v) {
+                            if (requestId.isEmpty) return;
+                            setState(
+                              () => _proofChecked[requestId] = v ?? false,
                             );
-                            if (didAct == true) {
-                              _load();
-                            }
                           },
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  MentorApi.action(
+                                    requestId: requestId,
+                                    action: 'REJECTED',
+                                    reason: 'Rejected by mentor',
+                                  ).then((_) => _load());
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.red),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Reject',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: proofChecked
+                                    ? () {
+                                        MentorApi.action(
+                                          requestId: requestId,
+                                          action: 'APPROVED',
+                                          reason: 'Approved by mentor',
+                                        ).then((_) => _load());
+                                      }
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Approve',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
                 ),
               ],
             ),
@@ -362,7 +473,6 @@ class _MentorQueueState extends State<_MentorQueue> {
       },
     );
   }
-
 }
 
 Future<bool?> _showReviewSheet(
@@ -375,12 +485,12 @@ Future<bool?> _showReviewSheet(
   final studentName = request['student_name']?.toString() ?? 'Student';
   final eventName = request['event_name']?.toString() ?? '—';
   final venue = request['venue']?.toString() ?? '—';
-  final dateRange = '${request['start_date'] ?? ''} – ${request['end_date'] ?? ''}';
+  final dateRange =
+      '${request['start_date'] ?? ''} – ${request['end_date'] ?? ''}';
   final id = request['id']?.toString() ?? '';
   final attachmentBase64 = request['attachment_base64']?.toString();
   final attachmentMime = request['attachment_mime']?.toString();
-  final attachmentName =
-      request['attachment_name']?.toString() ?? 'attachment';
+  final attachmentName = request['attachment_name']?.toString() ?? 'attachment';
 
   return showModalBottomSheet<bool>(
     context: context,
@@ -394,7 +504,9 @@ Future<bool?> _showReviewSheet(
             final mime = attachmentMime;
             if (b64 == null || mime == null || b64.isEmpty || mime.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('No proof uploaded for this request')),
+                const SnackBar(
+                  content: Text('No proof uploaded for this request'),
+                ),
               );
               return;
             }
@@ -484,7 +596,10 @@ Future<bool?> _showReviewSheet(
                             color: kBlue.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.fact_check_outlined, color: kBlue),
+                          child: const Icon(
+                            Icons.fact_check_outlined,
+                            color: kBlue,
+                          ),
                         ),
                         const SizedBox(width: 10),
                         const Expanded(
@@ -497,7 +612,9 @@ Future<bool?> _showReviewSheet(
                           ),
                         ),
                         IconButton(
-                          onPressed: submitting ? null : () => Navigator.pop(ctx),
+                          onPressed: submitting
+                              ? null
+                              : () => Navigator.pop(ctx),
                           icon: const Icon(Icons.close),
                         ),
                       ],
@@ -514,30 +631,40 @@ Future<bool?> _showReviewSheet(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(studentName,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Theme.of(context).colorScheme.onSurface,
-                              )),
+                          Text(
+                            studentName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
                           const SizedBox(height: 4),
-                          Text(eventName,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurface,
-                                fontWeight: FontWeight.w600,
-                              )),
+                          Text(
+                            eventName,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           const SizedBox(height: 2),
                           Text(
                             dateRange,
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(venue,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                fontSize: 12,
-                              )),
+                          Text(
+                            venue,
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
                           if ((attachmentBase64 ?? '').isNotEmpty &&
                               (attachmentMime ?? '').isNotEmpty) ...[
                             const SizedBox(height: 10),
@@ -575,7 +702,8 @@ Future<bool?> _showReviewSheet(
                       maxLines: 3,
                       decoration: InputDecoration(
                         labelText: 'Comment / Reason',
-                        helperText: 'Required for rejection. Optional for approval.',
+                        helperText:
+                            'Required for rejection. Optional for approval.',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -586,7 +714,9 @@ Future<bool?> _showReviewSheet(
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: submitting ? null : () => submit('REJECTED'),
+                            onPressed: submitting
+                                ? null
+                                : () => submit('REJECTED'),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.red,
                               side: const BorderSide(color: Colors.red),
@@ -599,7 +729,9 @@ Future<bool?> _showReviewSheet(
                                 ? const SizedBox(
                                     height: 18,
                                     width: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   )
                                 : const Text('Reject'),
                           ),
@@ -607,7 +739,9 @@ Future<bool?> _showReviewSheet(
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: submitting ? null : () => submit('APPROVED'),
+                            onPressed: submitting
+                                ? null
+                                : () => submit('APPROVED'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green,
                               foregroundColor: Colors.white,
@@ -641,7 +775,6 @@ Future<bool?> _showReviewSheet(
     },
   );
 }
-
 
 // ── SCAN ──────────────────────────────────────────────────────────────────────
 class _ScanPage extends StatelessWidget {
@@ -756,27 +889,24 @@ class _ScanPage extends StatelessWidget {
   }
 
   Widget _resultRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white70),
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white70)),
+        Flexible(
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
             ),
-            Flexible(
-              child: Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.right,
-              ),
-            ),
-          ],
+            textAlign: TextAlign.right,
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
@@ -842,10 +972,7 @@ class _MentorHistoryState extends State<_MentorHistory> {
     }
     if (_items.isEmpty) {
       return const Center(
-        child: Text(
-          'No approvals yet.',
-          style: TextStyle(color: Colors.grey),
-        ),
+        child: Text('No approvals yet.', style: TextStyle(color: Colors.grey)),
       );
     }
     return RefreshIndicator(
@@ -865,7 +992,9 @@ class _MentorHistoryState extends State<_MentorHistory> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 4),
+              ],
             ),
             child: Row(
               children: [
@@ -887,14 +1016,19 @@ class _MentorHistoryState extends State<_MentorHistory> {
                       ),
                       Text(
                         r['event_name']?.toString() ?? '—',
-                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
@@ -943,21 +1077,17 @@ class _MentorProfile extends StatelessWidget {
           const SizedBox(height: 12),
           const Text(
             'Dr. Ramesh K.',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
-          const Text(
-            'Mentor · CSE',
-            style: TextStyle(color: Colors.grey),
-          ),
+          const Text('Mentor · CSE', style: TextStyle(color: Colors.grey)),
           const SizedBox(height: 24),
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 4),
+              ],
             ),
             child: Column(
               children: [
@@ -991,9 +1121,7 @@ class _MentorProfile extends StatelessWidget {
                 AuthStore.clear();
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const ODLoginUI(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const ODLoginUI()),
                 );
               },
             ),
@@ -1004,20 +1132,13 @@ class _MentorProfile extends StatelessWidget {
   }
 
   Widget _row(String l, String v) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              l,
-              style: const TextStyle(color: Colors.grey),
-            ),
-            Text(
-              v,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(l, style: const TextStyle(color: Colors.grey)),
+        Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
+    ),
+  );
 }
-

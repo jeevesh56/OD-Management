@@ -27,6 +27,7 @@ class AuthStore {
   static String? fullName;
   static Map<String, dynamic>? studentProfile;
   static bool hasRegistered = false;
+  static final Map<String, String> _roleByEmail = <String, String>{};
 
   /// Set on student login; used to derive registration number for QR.
   static String? studentLoginEmail;
@@ -50,16 +51,16 @@ class AuthStore {
     if (i <= 0) return 'Student';
     final prefix = trimmed.substring(0, i);
     if (prefix.isEmpty) return 'Student';
-    final firstPart =
-        prefix.contains('.') ? prefix.split('.').first : prefix;
+    final firstPart = prefix.contains('.') ? prefix.split('.').first : prefix;
     if (firstPart.isEmpty) return 'Student';
-    return firstPart[0].toUpperCase() +
-        firstPart.substring(1).toLowerCase();
+    return firstPart[0].toUpperCase() + firstPart.substring(1).toLowerCase();
   }
 
   /// Call when student signs in with college email (before opening StudentHomeScreen).
   static void applyStudentLogin(String email) {
-    studentLoginEmail = email.trim();
+    final normalized = email.trim().toLowerCase();
+    _roleByEmail[normalized] = 'student';
+    studentLoginEmail = normalized;
     fullName = displayNameFromStudentEmail(email);
     userId = registrationFromLoginEmail(email);
     studentProfile = {
@@ -75,6 +76,7 @@ class AuthStore {
   /// Simple helpers for mentor / HoD names from the same email textbox.
   static void applyMentorLogin(String input) {
     final email = input.trim();
+    _roleByEmail[email.toLowerCase()] = 'mentor';
     fullName = email.contains('@')
         ? displayNameFromStudentEmail(email)
         : 'Mentor';
@@ -83,16 +85,26 @@ class AuthStore {
 
   static void applyHodLogin(String input) {
     final email = input.trim();
-    fullName =
-        email.contains('@') ? displayNameFromStudentEmail(email) : 'HoD';
+    _roleByEmail[email.toLowerCase()] = 'hod';
+    fullName = email.contains('@') ? displayNameFromStudentEmail(email) : 'HoD';
     role = 'hod';
   }
 
   static void applyEcLogin(String input) {
     final email = input.trim();
-    fullName =
-        email.contains('@') ? displayNameFromStudentEmail(email) : 'EC';
+    _roleByEmail[email.toLowerCase()] = 'ec';
+    fullName = email.contains('@') ? displayNameFromStudentEmail(email) : 'EC';
     role = 'ec';
+  }
+
+  static bool canUseEmailForRole(String email, String loginRole) {
+    final normalized = email.trim().toLowerCase();
+    final existingRole = _roleByEmail[normalized];
+    return existingRole == null || existingRole == loginRole;
+  }
+
+  static String? existingRoleForEmail(String email) {
+    return _roleByEmail[email.trim().toLowerCase()];
   }
 
   static void clear() {
@@ -105,9 +117,9 @@ class AuthStore {
   }
 
   static Map<String, String> get headers => {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      };
+    'Content-Type': 'application/json',
+    if (token != null) 'Authorization': 'Bearer $token',
+  };
 }
 
 // Simple in-memory store used when kUseMockApi is true. This lets the full
@@ -276,7 +288,9 @@ class OdApi {
   // Get my OD history
   static Future<ApiResult<List>> myRequests() async {
     if (kUseMockApi) {
-      return ApiResult.success(List<Map<String, dynamic>>.from(MockOdStore.items));
+      return ApiResult.success(
+        List<Map<String, dynamic>>.from(MockOdStore.items),
+      );
     }
 
     try {
@@ -304,9 +318,7 @@ class OdApi {
   }) async {
     if (kUseMockApi) {
       // Very simple mock: never blocks, just says no overlap.
-      return ApiResult.success(<String, dynamic>{
-        'has_overlap': false,
-      });
+      return ApiResult.success(<String, dynamic>{'has_overlap': false});
     }
 
     try {
@@ -331,9 +343,7 @@ class OdApi {
   // Active OD session
   static Future<ApiResult<Map>> activeSession() async {
     if (kUseMockApi) {
-      return ApiResult.success(<String, dynamic>{
-        'has_active_session': false,
-      });
+      return ApiResult.success(<String, dynamic>{'has_active_session': false});
     }
 
     try {
@@ -372,22 +382,22 @@ class EventsApi {
         });
       }
       final events = byName.values.toList()
-        ..sort((a, b) => (b['start_date'] ?? '').toString().compareTo(
-              (a['start_date'] ?? '').toString(),
-            ));
+        ..sort(
+          (a, b) => (b['start_date'] ?? '').toString().compareTo(
+            (a['start_date'] ?? '').toString(),
+          ),
+        );
       return ApiResult.success(events);
     }
 
     try {
       final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/events'),
-            headers: AuthStore.headers,
-          )
+          .get(Uri.parse('$kBaseUrl/api/events'), headers: AuthStore.headers)
           .timeout(const Duration(seconds: 10));
 
       final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body['events'] as List);
+      if (res.statusCode == 200)
+        return ApiResult.success(body['events'] as List);
       return ApiResult.fail(body['error'] ?? 'Failed to load events');
     } catch (e) {
       return ApiResult.fail('Network error: $e');
@@ -460,7 +470,9 @@ class MentorApi {
         return ApiResult.fail('Request not found');
       }
       r['mentor_comment'] = comment ?? reason;
-      r['status'] = action == 'APPROVED' ? 'MENTOR_APPROVED' : 'MENTOR_REJECTED';
+      r['status'] = action == 'APPROVED'
+          ? 'MENTOR_APPROVED'
+          : 'MENTOR_REJECTED';
       return ApiResult.success(r);
     }
 
@@ -487,10 +499,12 @@ class MentorApi {
 
   static Future<ApiResult<List>> history() async {
     if (kUseMockApi) {
-      final items = MockOdStore.items.where((r) {
-        final s = r['status']?.toString() ?? '';
-        return s == 'MENTOR_APPROVED' || s == 'MENTOR_REJECTED';
-      }).toList(growable: false);
+      final items = MockOdStore.items
+          .where((r) {
+            final s = r['status']?.toString() ?? '';
+            return s == 'MENTOR_APPROVED' || s == 'MENTOR_REJECTED';
+          })
+          .toList(growable: false);
       return ApiResult.success(items);
     }
     try {
@@ -522,13 +536,11 @@ class ECApi {
     }
     try {
       final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/ec/queue'),
-            headers: AuthStore.headers,
-          )
+          .get(Uri.parse('$kBaseUrl/api/ec/queue'), headers: AuthStore.headers)
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body['queue'] as List);
+      if (res.statusCode == 200)
+        return ApiResult.success(body['queue'] as List);
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
       return ApiResult.fail('Network error: $e');
@@ -574,22 +586,22 @@ class ECApi {
 class HoDApi {
   static Future<ApiResult<List>> queue() async {
     if (kUseMockApi) {
-      final pending = MockOdStore.items.where((r) {
-        final s = r['status'] as String? ?? '';
-        // In mock mode, HoD sees requests approved by mentor (no EC step).
-        return s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
-      }).toList(growable: false);
+      final pending = MockOdStore.items
+          .where((r) {
+            final s = r['status'] as String? ?? '';
+            // In mock mode, HoD sees requests approved by mentor (no EC step).
+            return s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
+          })
+          .toList(growable: false);
       return ApiResult.success(pending);
     }
     try {
       final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/hod/queue'),
-            headers: AuthStore.headers,
-          )
+          .get(Uri.parse('$kBaseUrl/api/hod/queue'), headers: AuthStore.headers)
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body['queue'] as List);
+      if (res.statusCode == 200)
+        return ApiResult.success(body['queue'] as List);
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
       return ApiResult.fail('Network error: $e');
@@ -663,9 +675,7 @@ class HoDApi {
           .length;
       final pending = MockOdStore.items.where((r) {
         final s = r['status']?.toString() ?? '';
-        return s == 'PENDING' ||
-            s == 'MENTOR_APPROVED' ||
-            s == 'EC_CONFIRMED';
+        return s == 'PENDING' || s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
       }).length;
       final rejected = MockOdStore.items.where((r) {
         final s = r['status']?.toString() ?? '';
@@ -697,10 +707,12 @@ class HoDApi {
 
   static Future<ApiResult<List>> history() async {
     if (kUseMockApi) {
-      final items = MockOdStore.items.where((r) {
-        final s = r['status']?.toString() ?? '';
-        return s == 'HOD_APPROVED' || s == 'HOD_REJECTED';
-      }).toList(growable: false);
+      final items = MockOdStore.items
+          .where((r) {
+            final s = r['status']?.toString() ?? '';
+            return s == 'HOD_APPROVED' || s == 'HOD_REJECTED';
+          })
+          .toList(growable: false);
       return ApiResult.success(items);
     }
     try {
@@ -760,4 +772,3 @@ class VerifyApi {
     }
   }
 }
-

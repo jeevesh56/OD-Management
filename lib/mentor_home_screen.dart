@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 
 import 'api_service.dart';
 import 'main.dart';
@@ -32,10 +33,7 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
         ),
         title: const Text(
           'Mentor Dashboard',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: kBlue,
         automaticallyImplyLeading: false,
@@ -46,9 +44,7 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
               AuthStore.clear();
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const ODLoginUI(),
-                ),
+                MaterialPageRoute(builder: (_) => const ODLoginUI()),
               );
             },
           ),
@@ -113,6 +109,38 @@ class _MentorQueueState extends State<_MentorQueue> {
     });
   }
 
+  Future<void> _openProof(Map<String, dynamic> r) async {
+    final b64 = r['attachment_base64']?.toString();
+    final mime = r['attachment_mime']?.toString();
+    if (b64 == null || mime == null || b64.isEmpty || mime.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No image proof uploaded')));
+      return;
+    }
+    if (!mime.startsWith('image/')) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only image proof preview is supported')),
+      );
+      return;
+    }
+    final bytes = base64Decode(b64);
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: InteractiveViewer(
+            child: Image.memory(bytes, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -133,10 +161,7 @@ class _MentorQueueState extends State<_MentorQueue> {
                 style: const TextStyle(color: Colors.red),
               ),
               const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _load,
-                child: const Text('Retry'),
-              ),
+              ElevatedButton(onPressed: _load, child: const Text('Retry')),
             ],
           ),
         ),
@@ -151,15 +176,9 @@ class _MentorQueueState extends State<_MentorQueue> {
             SizedBox(height: 16),
             Text(
               'All caught up!',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            Text(
-              'No pending approvals',
-              style: TextStyle(color: Colors.grey),
-            ),
+            Text('No pending approvals', style: TextStyle(color: Colors.grey)),
           ],
         ),
       );
@@ -170,6 +189,9 @@ class _MentorQueueState extends State<_MentorQueue> {
       separatorBuilder: (_, __) => const SizedBox(height: 14),
       itemBuilder: (_, i) {
         final r = _requests[i];
+        final hasProof =
+            (r['attachment_base64']?.toString().isNotEmpty ?? false) &&
+            (r['attachment_mime']?.toString().isNotEmpty ?? false);
         return Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -204,192 +226,228 @@ class _MentorQueueState extends State<_MentorQueue> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: kBlue,
-                            child: Text(
-                              (r['student_name'] as String? ?? 'S')[0],
-                              style: const TextStyle(color: Colors.white),
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: kBlue,
+                              child: Text(
+                                (r['student_name'] as String? ?? 'S')[0],
+                                style: const TextStyle(color: Colors.white),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  r['student_name'] as String? ?? 'Student',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    r['student_name'] as String? ?? 'Student',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  'Request ID: ${r['id']}',
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 11,
+                                  Text(
+                                    'Request ID: ${r['id']}',
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 11,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade50,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.schedule,
-                                  size: 14,
-                                  color: Colors.orange.shade700,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  r['start_date']?.toString() ?? '',
-                                  style: TextStyle(
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.schedule,
+                                    size: 14,
                                     color: Colors.orange.shade700,
-                                    fontSize: 11,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    r['start_date']?.toString() ?? '',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade700,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.event,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                r['event_name'] as String? ?? '—',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_month,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${r['start_date']} – ${r['end_date']}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.place,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                r['venue'] as String? ?? '—',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (hasProof) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.photo_outlined,
+                                size: 16,
+                                color: Colors.black54,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  r['attachment_name']?.toString() ??
+                                      'image proof',
+                                  style: const TextStyle(fontSize: 12),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => _openProof(r),
+                                child: const Text('View proof'),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                icon: const Icon(
+                                  Icons.close,
+                                  color: Colors.red,
+                                  size: 18,
+                                ),
+                                label: const Text(
+                                  'Reject',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.red),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.event, size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              r['event_name'] as String? ?? '—',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                                onPressed: () async {
+                                  final reason = await _askReason(
+                                    context,
+                                    title: 'Reject OD',
+                                    label: 'Reason for rejection',
+                                  );
+                                  if (reason == null) return;
+                                  MentorApi.action(
+                                    requestId: r['id'].toString(),
+                                    action: 'REJECTED',
+                                    reason: reason,
+                                  ).then((_) => _load());
+                                },
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.calendar_month,
-                              size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '${r['start_date']} – ${r['end_date']}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.place, size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              r['venue'] as String? ?? '—',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              icon: const Icon(
-                                Icons.close,
-                                color: Colors.red,
-                                size: 18,
-                              ),
-                              label: const Text(
-                                'Reject',
-                                style: TextStyle(color: Colors.red),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Colors.red),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                icon: const Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 18,
                                 ),
-                              ),
-                              onPressed: () async {
-                                final reason = await _askReason(
-                                  context,
-                                  title: 'Reject OD',
-                                  label: 'Reason for rejection',
-                                );
-                                if (reason == null) return;
-                                MentorApi.action(
-                                  requestId: r['id'].toString(),
-                                  action: 'REJECTED',
-                                  reason: reason,
-                                ).then((_) => _load());
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              icon: const Icon(
-                                Icons.check,
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                              label: const Text(
-                                'Approve',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                                label: const Text(
+                                  'Approve',
+                                  style: TextStyle(color: Colors.white),
                                 ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                onPressed: () async {
+                                  final reason = await _askReason(
+                                    context,
+                                    title: 'Approve OD',
+                                    label: 'Note / comment (optional)',
+                                    allowEmpty: true,
+                                  );
+                                  MentorApi.action(
+                                    requestId: r['id'].toString(),
+                                    action: 'APPROVED',
+                                    reason: reason?.isEmpty == true
+                                        ? 'Approved by mentor'
+                                        : reason,
+                                  ).then((_) => _load());
+                                },
                               ),
-                              onPressed: () async {
-                                final reason = await _askReason(
-                                  context,
-                                  title: 'Approve OD',
-                                  label: 'Note / comment (optional)',
-                                  allowEmpty: true,
-                                );
-                                MentorApi.action(
-                                  requestId: r['id'].toString(),
-                                  action: 'APPROVED',
-                                  reason: reason?.isEmpty == true
-                                      ? 'Approved by mentor'
-                                      : reason,
-                                ).then((_) => _load());
-                              },
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
                 ),
               ],
             ),
@@ -398,7 +456,6 @@ class _MentorQueueState extends State<_MentorQueue> {
       },
     );
   }
-
 }
 
 Future<String?> _askReason(
@@ -440,7 +497,6 @@ Future<String?> _askReason(
     },
   );
 }
-
 
 // ── SCAN ──────────────────────────────────────────────────────────────────────
 class _ScanPage extends StatelessWidget {
@@ -555,27 +611,24 @@ class _ScanPage extends StatelessWidget {
   }
 
   Widget _resultRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white70),
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white70)),
+        Flexible(
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
             ),
-            Flexible(
-              child: Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.right,
-              ),
-            ),
-          ],
+            textAlign: TextAlign.right,
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
@@ -641,10 +694,7 @@ class _MentorHistoryState extends State<_MentorHistory> {
     }
     if (_items.isEmpty) {
       return const Center(
-        child: Text(
-          'No approvals yet.',
-          style: TextStyle(color: Colors.grey),
-        ),
+        child: Text('No approvals yet.', style: TextStyle(color: Colors.grey)),
       );
     }
     return RefreshIndicator(
@@ -664,7 +714,9 @@ class _MentorHistoryState extends State<_MentorHistory> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 4),
+              ],
             ),
             child: Row(
               children: [
@@ -686,14 +738,19 @@ class _MentorHistoryState extends State<_MentorHistory> {
                       ),
                       Text(
                         r['event_name']?.toString() ?? '—',
-                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
@@ -722,17 +779,21 @@ class _MentorProfile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final name = AuthStore.fullName ?? 'Mentor';
+    final dept = AuthStore.userDepartment ?? 'Department';
+    final initials = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'M';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
           const SizedBox(height: 16),
-          const CircleAvatar(
+          CircleAvatar(
             radius: 50,
             backgroundColor: kBlue,
             child: Text(
-              'RK',
-              style: TextStyle(
+              initials,
+              style: const TextStyle(
                 fontSize: 32,
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -740,29 +801,25 @@ class _MentorProfile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Dr. Ramesh K.',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
+          Text(
+            name,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
-          const Text(
-            'Mentor · CSE',
-            style: TextStyle(color: Colors.grey),
-          ),
+          Text('Mentor · $dept', style: const TextStyle(color: Colors.grey)),
           const SizedBox(height: 24),
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 4),
+              ],
             ),
             child: Column(
               children: [
                 _row('Staff ID', 'RIT-FAC-001'),
                 const Divider(height: 1),
-                _row('Department', 'CSE'),
+                _row('Department', dept),
                 const Divider(height: 1),
                 _row('Students Assigned', '45'),
                 const Divider(height: 1),
@@ -790,9 +847,7 @@ class _MentorProfile extends StatelessWidget {
                 AuthStore.clear();
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const ODLoginUI(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const ODLoginUI()),
                 );
               },
             ),
@@ -803,20 +858,13 @@ class _MentorProfile extends StatelessWidget {
   }
 
   Widget _row(String l, String v) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              l,
-              style: const TextStyle(color: Colors.grey),
-            ),
-            Text(
-              v,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(l, style: const TextStyle(color: Colors.grey)),
+        Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
+    ),
+  );
 }
-

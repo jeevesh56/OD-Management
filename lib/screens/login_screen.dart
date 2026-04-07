@@ -4,6 +4,7 @@ import '../api_service.dart';
 import '../student_home_screen.dart';
 import '../mentor_home_screen.dart';
 import '../hod_home_screen.dart';
+import '../ec_home_screen.dart';
 import 'register_screen.dart';
 
 class ODLoginUI extends StatefulWidget {
@@ -14,7 +15,7 @@ class ODLoginUI extends StatefulWidget {
 }
 
 class _ODLoginUIState extends State<ODLoginUI> {
-  String _loginType = 'student'; // student | mentor | hod
+  String _loginType = 'student'; // student | mentor | ec | hod
   bool _obscurePassword = true;
   String? _welcomeUsername;
   final _emailController = TextEditingController();
@@ -27,6 +28,12 @@ class _ODLoginUIState extends State<ODLoginUI> {
     final email = _emailController.text.trim();
     if (email.isEmpty) return false;
     return RegExp(_studentEmailPattern).hasMatch(email);
+  }
+
+  bool get _isValidRoleEmail {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) return false;
+    return AuthStore.isValidRoleEmail(email);
   }
 
   @override
@@ -44,9 +51,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         child: Container(
           width: 960,
           height: 540,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
           clipBehavior: Clip.antiAlias,
           child: Row(
             children: [
@@ -74,10 +79,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
                       const SizedBox(height: 10),
                       const Text(
                         "OD Requests Made Simple",
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.black45,
-                        ),
+                        style: TextStyle(fontSize: 18, color: Colors.black45),
                       ),
                     ],
                   ),
@@ -93,10 +95,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
                   ),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        Color(0xFF11154A),
-                        Color(0xFF050733),
-                      ],
+                      colors: [Color(0xFF11154A), Color(0xFF050733)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -112,10 +111,13 @@ class _ODLoginUIState extends State<ODLoginUI> {
                               final result = await Navigator.push<String>(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => const ODRegisterScreen(),
+                                  builder: (context) =>
+                                      const ODRegisterScreen(),
                                 ),
                               );
-                              if (result != null && result.isNotEmpty && mounted) {
+                              if (result != null &&
+                                  result.isNotEmpty &&
+                                  mounted) {
                                 setState(() => _welcomeUsername = result);
                               }
                             },
@@ -174,13 +176,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
                         ),
                       ),
                       const Spacer(flex: 1),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _loginTypeToggle(),
-                          ),
-                        ],
-                      ),
+                      Row(children: [Expanded(child: _loginTypeToggle())]),
                     ],
                   ),
                 ),
@@ -194,21 +190,57 @@ class _ODLoginUIState extends State<ODLoginUI> {
 
   void _onContinue() {
     if (_loginType == 'mentor') {
+      if (!_isValidRoleEmail) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Mentor email must be: name@department.ritchennai.edu.in",
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
       AuthStore.applyMentorLogin(_emailController.text);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (context) => const MentorHomeScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const MentorHomeScreen()),
+      );
+      return;
+    } else if (_loginType == 'ec') {
+      if (!_isValidRoleEmail) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "EC email must be: name@department.ritchennai.edu.in",
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      AuthStore.applyEcLogin(_emailController.text);
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const ECHomeScreen()),
       );
       return;
     } else if (_loginType == 'hod') {
+      if (!_isValidRoleEmail) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "HoD email must be: name@department.ritchennai.edu.in",
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
       AuthStore.applyHodLogin(_emailController.text);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (context) => const HoDHomeScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const HoDHomeScreen()),
       );
       return;
     }
@@ -226,9 +258,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
     AuthStore.applyStudentLogin(_emailController.text.trim());
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (context) => const StudentHomeScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const StudentHomeScreen()),
     );
   }
 
@@ -247,9 +277,8 @@ class _ODLoginUIState extends State<ODLoginUI> {
           Expanded(
             child: _toggleButton("Mentor", _loginType == 'mentor', 'mentor'),
           ),
-          Expanded(
-            child: _toggleButton("HoD", _loginType == 'hod', 'hod'),
-          ),
+          Expanded(child: _toggleButton("EC", _loginType == 'ec', 'ec')),
+          Expanded(child: _toggleButton("HoD", _loginType == 'hod', 'hod')),
         ],
       ),
     );
@@ -266,9 +295,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
         decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFFFF0F9D)
-              : Colors.transparent,
+          color: isSelected ? const Color(0xFFFF0F9D) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Center(
@@ -304,10 +331,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
           ),
           prefixIcon: Icon(Icons.lock_outline, color: Colors.white70, size: 20),
           hintText: "Password",
-          hintStyle: const TextStyle(
-            color: Colors.white54,
-            fontSize: 14,
-          ),
+          hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
           suffixIcon: IconButton(
             icon: Icon(
               _obscurePassword ? Icons.visibility_off : Icons.visibility,
@@ -347,10 +371,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
           ),
           prefixIcon: Icon(icon, color: Colors.white70, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(
-            color: Colors.white54,
-            fontSize: 14,
-          ),
+          hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
         ),
       ),
     );

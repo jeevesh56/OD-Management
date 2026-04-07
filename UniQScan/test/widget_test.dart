@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:rit_od_manager/main.dart';
+import '../lib/main.dart';
 
 void main() {
   testWidgets('App boots (smoke test)', (WidgetTester tester) async {

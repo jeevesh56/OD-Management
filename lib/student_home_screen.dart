@@ -193,6 +193,13 @@ class _DashboardState extends State<_Dashboard> {
         '';
     final welcomeSub =
         section.isNotEmpty ? 'Welcome, $name ($section)' : 'Welcome, $name';
+    final activeSessionName =
+      ((_activeSession?['session'] as Map?)?['event_name']?.toString().trim() ??
+          '')
+        .trim();
+    final sessionLabel = activeSessionName.isNotEmpty
+      ? activeSessionName
+      : 'Active OD session';
 
     int total = _requests.length;
     int approved = 0;
@@ -321,7 +328,7 @@ class _DashboardState extends State<_Dashboard> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  'OD active: ${_activeSession!['session']['event_name']}',
+                                  'OD active: $sessionLabel',
                                   style: TextStyle(
                                     color: Colors.green.shade900,
                                     fontWeight: FontWeight.w600,
