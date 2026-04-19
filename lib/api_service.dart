@@ -22,6 +22,17 @@ const bool kUseMockApi = bool.fromEnvironment(
   defaultValue: false,
 );
 
+// When false (default), backend/network failures are surfaced as errors
+// instead of silently falling back to in-memory mock data.
+const bool kAllowOfflineFallback = bool.fromEnvironment(
+  'ALLOW_OFFLINE_FALLBACK',
+  defaultValue: false,
+);
+
+void _logApiError(String endpoint, Object error) {
+  debugPrint('[API ERROR] $endpoint -> $error');
+}
+
 // ── Simple in-memory token store (no shared_preferences needed) ──────────────
 /// Fixed prefix for registration numbers; only last 3 digits vary (from email).
 const String kRegNumberPrefix = '2117240020';
@@ -323,21 +334,25 @@ class OdApi {
       if (res.statusCode == 201) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Submission failed');
     } catch (e) {
-      final request = MockOdStore.addRequest(
-        eventName: eventName,
-        organiser: organiser,
-        venue: venue,
-        startDate: startDate,
-        endDate: endDate,
-        startTime: startTime,
-        endTime: endTime,
-        reason: reason,
-        eventId: eventId,
-        attachmentName: attachmentName,
-        attachmentMime: attachmentMime,
-        attachmentBase64: attachmentBase64,
-      );
-      return ApiResult.success(request);
+      _logApiError('POST /api/student/od-requests', e);
+      if (kAllowOfflineFallback) {
+        final request = MockOdStore.addRequest(
+          eventName: eventName,
+          organiser: organiser,
+          venue: venue,
+          startDate: startDate,
+          endDate: endDate,
+          startTime: startTime,
+          endTime: endTime,
+          reason: reason,
+          eventId: eventId,
+          attachmentName: attachmentName,
+          attachmentMime: attachmentMime,
+          attachmentBase64: attachmentBase64,
+        );
+        return ApiResult.success(request);
+      }
+      return ApiResult.fail('Backend unavailable. Request was not saved.');
     }
   }
 
@@ -364,6 +379,7 @@ class OdApi {
       // Fall back to local defaults when endpoint exists but has no data.
       return ApiResult.success(List<Map<String, String>>.from(_fallbackEvents));
     } catch (e) {
+      _logApiError('GET /api/events', e);
       // Graceful fallback keeps New OD usable when backend endpoint is down.
       return ApiResult.success(List<Map<String, String>>.from(_fallbackEvents));
     }
@@ -391,7 +407,13 @@ class OdApi {
       }
       return ApiResult.fail(body['error'] ?? 'Failed to load');
     } catch (e) {
-      return ApiResult.success(List<Map<String, dynamic>>.from(MockOdStore.items));
+      _logApiError('GET /api/student/od-requests', e);
+      if (kAllowOfflineFallback) {
+        return ApiResult.success(
+          List<Map<String, dynamic>>.from(MockOdStore.items),
+        );
+      }
+      return ApiResult.fail('Backend unavailable. Unable to fetch requests.');
     }
   }
 
@@ -420,6 +442,7 @@ class OdApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Check failed');
     } catch (e) {
+      _logApiError('GET /api/student/check-overlap', e);
       return ApiResult.success(<String, dynamic>{'has_overlap': false});
     }
   }
@@ -442,6 +465,7 @@ class OdApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
+      _logApiError('GET /api/student/active-session', e);
       return ApiResult.success(<String, dynamic>{'has_active_session': false});
     }
   }
@@ -470,10 +494,14 @@ class MentorApi {
       }
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      final pending = MockOdStore.items
-          .where((r) => r['status'] == 'PENDING')
-          .toList(growable: false);
-      return ApiResult.success(pending);
+      _logApiError('GET /api/mentor/queue', e);
+      if (kAllowOfflineFallback) {
+        final pending = MockOdStore.items
+            .where((r) => r['status'] == 'PENDING')
+            .toList(growable: false);
+        return ApiResult.success(pending);
+      }
+      return ApiResult.fail('Backend unavailable. Unable to load mentor queue.');
     }
   }
 
@@ -512,15 +540,19 @@ class MentorApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Action failed');
     } catch (e) {
-      final r = MockOdStore.byId(requestId);
-      if (r == null) {
-        return ApiResult.fail('Request not found');
+      _logApiError('POST /api/mentor/action', e);
+      if (kAllowOfflineFallback) {
+        final r = MockOdStore.byId(requestId);
+        if (r == null) {
+          return ApiResult.fail('Request not found');
+        }
+        r['mentor_comment'] = comment ?? reason;
+        r['status'] = action == 'APPROVED'
+            ? 'MENTOR_APPROVED'
+            : 'MENTOR_REJECTED';
+        return ApiResult.success(r);
       }
-      r['mentor_comment'] = comment ?? reason;
-      r['status'] = action == 'APPROVED'
-          ? 'MENTOR_APPROVED'
-          : 'MENTOR_REJECTED';
-      return ApiResult.success(r);
+      return ApiResult.fail('Backend unavailable. Mentor action not saved.');
     }
   }
 
@@ -547,13 +579,17 @@ class MentorApi {
       }
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      final items = MockOdStore.items
-          .where((r) {
-            final s = r['status']?.toString() ?? '';
-            return s == 'MENTOR_APPROVED' || s == 'MENTOR_REJECTED';
-          })
-          .toList(growable: false);
-      return ApiResult.success(items);
+      _logApiError('GET /api/mentor/history', e);
+      if (kAllowOfflineFallback) {
+        final items = MockOdStore.items
+            .where((r) {
+              final s = r['status']?.toString() ?? '';
+              return s == 'MENTOR_APPROVED' || s == 'MENTOR_REJECTED';
+            })
+            .toList(growable: false);
+        return ApiResult.success(items);
+      }
+      return ApiResult.fail('Backend unavailable. Unable to load mentor history.');
     }
   }
 }
@@ -577,10 +613,14 @@ class ECApi {
       }
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      final pending = MockOdStore.items
-          .where((r) => r['status'] == 'MENTOR_APPROVED')
-          .toList(growable: false);
-      return ApiResult.success(pending);
+      _logApiError('GET /api/ec/queue', e);
+      if (kAllowOfflineFallback) {
+        final pending = MockOdStore.items
+            .where((r) => r['status'] == 'MENTOR_APPROVED')
+            .toList(growable: false);
+        return ApiResult.success(pending);
+      }
+      return ApiResult.fail('Backend unavailable. Unable to load EC queue.');
     }
   }
 
@@ -614,13 +654,17 @@ class ECApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Action failed');
     } catch (e) {
-      final r = MockOdStore.byId(requestId);
-      if (r == null) {
-        return ApiResult.fail('Request not found');
+      _logApiError('POST /api/ec/action', e);
+      if (kAllowOfflineFallback) {
+        final r = MockOdStore.byId(requestId);
+        if (r == null) {
+          return ApiResult.fail('Request not found');
+        }
+        r['ec_comment'] = reason;
+        r['status'] = action == 'CONFIRMED' ? 'EC_CONFIRMED' : 'EC_REJECTED';
+        return ApiResult.success(r);
       }
-      r['ec_comment'] = reason;
-      r['status'] = action == 'CONFIRMED' ? 'EC_CONFIRMED' : 'EC_REJECTED';
-      return ApiResult.success(r);
+      return ApiResult.fail('Backend unavailable. EC action not saved.');
     }
   }
 }
@@ -648,13 +692,17 @@ class HoDApi {
       }
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      final pending = MockOdStore.items
-          .where((r) {
-            final s = r['status'] as String? ?? '';
-            return s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
-          })
-          .toList(growable: false);
-      return ApiResult.success(pending);
+      _logApiError('GET /api/hod/queue', e);
+      if (kAllowOfflineFallback) {
+        final pending = MockOdStore.items
+            .where((r) {
+              final s = r['status'] as String? ?? '';
+              return s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
+            })
+            .toList(growable: false);
+        return ApiResult.success(pending);
+      }
+      return ApiResult.fail('Backend unavailable. Unable to load HoD queue.');
     }
   }
 
@@ -688,13 +736,17 @@ class HoDApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Action failed');
     } catch (e) {
-      final r = MockOdStore.byId(requestId);
-      if (r == null) {
-        return ApiResult.fail('Request not found');
+      _logApiError('POST /api/hod/action', e);
+      if (kAllowOfflineFallback) {
+        final r = MockOdStore.byId(requestId);
+        if (r == null) {
+          return ApiResult.fail('Request not found');
+        }
+        r['hod_comment'] = reason;
+        r['status'] = action == 'APPROVED' ? 'HOD_APPROVED' : 'HOD_REJECTED';
+        return ApiResult.success(r);
       }
-      r['hod_comment'] = reason;
-      r['status'] = action == 'APPROVED' ? 'HOD_APPROVED' : 'HOD_REJECTED';
-      return ApiResult.success(r);
+      return ApiResult.fail('Backend unavailable. HoD action not saved.');
     }
   }
 
@@ -719,12 +771,16 @@ class HoDApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Bulk action failed');
     } catch (e) {
-      for (final r in MockOdStore.items) {
-        if (r['status'] == 'EC_CONFIRMED') {
-          r['status'] = 'HOD_APPROVED';
+      _logApiError('POST /api/hod/bulk-action', e);
+      if (kAllowOfflineFallback) {
+        for (final r in MockOdStore.items) {
+          if (r['status'] == 'EC_CONFIRMED') {
+            r['status'] = 'HOD_APPROVED';
+          }
         }
+        return ApiResult.success({'ok': true});
       }
-      return ApiResult.success({'ok': true});
+      return ApiResult.fail('Backend unavailable. Bulk action not saved.');
     }
   }
 
@@ -762,26 +818,30 @@ class HoDApi {
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
-      final total = MockOdStore.items.length;
-      final approved = MockOdStore.items
-          .where((r) => r['status'] == 'HOD_APPROVED')
-          .length;
-      final pending = MockOdStore.items.where((r) {
-        final s = r['status']?.toString() ?? '';
-        return s == 'PENDING' || s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
-      }).length;
-      final rejected = MockOdStore.items.where((r) {
-        final s = r['status']?.toString() ?? '';
-        return s.contains('REJECTED') || s == 'CANCELLED';
-      }).length;
-      final activeNow = 0;
-      return ApiResult.success({
-        'total': total,
-        'approved': approved,
-        'pending': pending,
-        'rejected': rejected,
-        'active_now': activeNow,
-      });
+      _logApiError('GET /api/hod/analytics', e);
+      if (kAllowOfflineFallback) {
+        final total = MockOdStore.items.length;
+        final approved = MockOdStore.items
+            .where((r) => r['status'] == 'HOD_APPROVED')
+            .length;
+        final pending = MockOdStore.items.where((r) {
+          final s = r['status']?.toString() ?? '';
+          return s == 'PENDING' || s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
+        }).length;
+        final rejected = MockOdStore.items.where((r) {
+          final s = r['status']?.toString() ?? '';
+          return s.contains('REJECTED') || s == 'CANCELLED';
+        }).length;
+        final activeNow = 0;
+        return ApiResult.success({
+          'total': total,
+          'approved': approved,
+          'pending': pending,
+          'rejected': rejected,
+          'active_now': activeNow,
+        });
+      }
+      return ApiResult.fail('Backend unavailable. Unable to load analytics.');
     }
   }
 
