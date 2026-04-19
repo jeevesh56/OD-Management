@@ -232,27 +232,30 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
       child: TextField(
         controller: controller,
         obscureText: obscure,
+        autofillHints: hint.toLowerCase().contains('confirm')
+            ? const [AutofillHints.newPassword]
+            : const [AutofillHints.newPassword, AutofillHints.password],
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
           LengthLimitingTextInputFormatter(_passwordLength),
         ],
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+        style: TextStyle(
+          color: Colors.black87,
+          fontSize: 14,
+        ),
         decoration: InputDecoration(
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 12,
           ),
-          prefixIcon: Icon(Icons.lock_outline, color: Colors.white70, size: 20),
+          prefixIcon: const Icon(Icons.lock_outline, color: Colors.black54, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(
-            color: Colors.white54,
-            fontSize: 14,
-          ),
+          hintStyle: const TextStyle(color: Colors.black54, fontSize: 14),
           suffixIcon: IconButton(
             icon: Icon(
               obscure ? Icons.visibility_off : Icons.visibility,
-              color: Colors.white70,
+              color: Colors.black54,
               size: 22,
             ),
             onPressed: onToggle,
@@ -277,19 +280,25 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
       child: TextField(
         controller: controller,
         obscureText: obscureText,
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+        autofillHints: hint == "Full Name"
+            ? const [AutofillHints.name]
+            : const [AutofillHints.username, AutofillHints.email],
+        keyboardType: hint == "College Email"
+            ? TextInputType.emailAddress
+            : TextInputType.text,
+        style: TextStyle(
+          color: Colors.black87,
+          fontSize: 14,
+        ),
         decoration: InputDecoration(
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 12,
           ),
-          prefixIcon: Icon(icon, color: Colors.white70, size: 20),
+          prefixIcon: Icon(icon, color: Colors.black54, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(
-            color: Colors.white54,
-            fontSize: 14,
-          ),
+          hintStyle: const TextStyle(color: Colors.black54, fontSize: 14),
         ),
       ),
     );

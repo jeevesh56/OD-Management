@@ -12,18 +12,18 @@ class PortalStatusTimelineScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final stages = odTimelineStagesFromRequest(request);
     final title = request['event_name']?.toString() ?? 'OD request';
     final status = request['status']?.toString() ?? '';
     final badgeColor = portalOdStatusColor(status);
 
     return Scaffold(
-      backgroundColor: const Color(0xfff5f8fc),
+      backgroundColor: scheme.surfaceContainerLowest,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.white.withValues(alpha: 0.92),
+        backgroundColor: scheme.surface.withValues(alpha: 0.92),
         elevation: 0,
-        foregroundColor: Colors.black87,
         title: const Text(
           'Status timeline',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -48,7 +48,7 @@ class PortalStatusTimelineScreen extends StatelessWidget {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
-                    decoration: portalWhiteCardDecoration(radius: 18),
+                    decoration: portalCardDecoration(context, radius: 18),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -85,7 +85,7 @@ class PortalStatusTimelineScreen extends StatelessWidget {
                               portalOdDateLabel(request['start_date'],
                                   request['end_date']),
                               style: TextStyle(
-                                color: Colors.grey.shade700,
+                                color: scheme.onSurface.withOpacity(0.72),
                                 fontSize: 14,
                               ),
                             ),
@@ -100,7 +100,7 @@ class PortalStatusTimelineScreen extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
+                      color: scheme.onSurface.withOpacity(0.72),
                       letterSpacing: 0.3,
                     ),
                   ),
@@ -108,7 +108,7 @@ class PortalStatusTimelineScreen extends StatelessWidget {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-                    decoration: portalWhiteCardDecoration(radius: 20),
+                    decoration: portalCardDecoration(context, radius: 20),
                     child: PortalOdVerticalTimeline(stages: stages),
                   ),
                   const SizedBox(height: 20),
@@ -116,19 +116,19 @@ class PortalStatusTimelineScreen extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xfff3f6ff),
+                      color: scheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.blue.shade100),
+                      border: Border.all(color: scheme.outlineVariant),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline, color: Colors.blue.shade700),
+                        Icon(Icons.info_outline, color: scheme.primary),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             'Mentor → Event Coordinator → HoD. You’ll be notified as each stage completes.',
                             style: TextStyle(
-                              color: Colors.blue.shade900,
+                              color: scheme.onSurface,
                               fontSize: 13,
                               height: 1.4,
                             ),

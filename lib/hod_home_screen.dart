@@ -1,11 +1,15 @@
-import 'package:flutter/material.dart';
 import 'dart:convert';
 
-import 'api_service.dart';
-import 'screens/login_screen.dart';
-import 'main.dart';
+import 'package:flutter/material.dart';
 
-const Color kHoDRed = Color(0xFFB71C1C);
+import 'api_service.dart';
+import 'main.dart';
+import 'screens/login_screen.dart';
+
+const Color kHoDPrimary = Color(0xFF0F3D91);
+const Color kHoDAccent = Color(0xFF0E9F6E);
+const Color kHoDBg = Color(0xFFF4F7FB);
+const Color kHoDSidebar = Color(0xFF0B1F44);
 
 class HoDHomeScreen extends StatefulWidget {
   const HoDHomeScreen({super.key});
@@ -15,109 +19,121 @@ class HoDHomeScreen extends StatefulWidget {
 }
 
 class _HoDHomeScreenState extends State<HoDHomeScreen> {
-  int _currentIndex = 0;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  final List<Widget> _pages = const [
-    _HoDQueue(),
-    _HoDAnalytics(),
-    _HoDMonitor(),
-    _ScanPageHoD(),
-    _HoDProfile(),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.brightness_6_outlined, color: Colors.white),
-          onPressed: ThemeController.toggle,
-          tooltip: 'Toggle theme',
-        ),
-        title: const Text(
-          'HoD Dashboard',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: kHoDRed,
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () {
-              AuthStore.clear();
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const ODLoginUI()),
-              );
-            },
-          ),
-        ],
-      ),
-      body: _pages[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        selectedItemColor: kHoDRed,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        onTap: (i) => setState(() => _currentIndex = i),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.queue), label: 'Queue'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.analytics),
-            label: 'Analytics',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.monitor), label: 'Monitor'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.qr_code_scanner),
-            label: 'Scan',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-        ],
-      ),
-    );
-  }
-}
-
-class _HoDQueue extends StatefulWidget {
-  const _HoDQueue();
-
-  @override
-  State<_HoDQueue> createState() => _HoDQueueState();
-}
-
-class _HoDQueueState extends State<_HoDQueue> {
+  int _section = 0;
   bool _loading = true;
+  bool _busy = false;
   String? _error;
   List<Map<String, dynamic>> _requests = [];
+  List<Map<String, dynamic>> _sessions = [];
+  Map<String, dynamic> _analytics = const {};
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadAll();
   }
 
-  Future<void> _load() async {
+  Future<void> _loadAll() async {
+    if (_busy) return;
+    _busy = true;
+    if (!mounted) {
+      _busy = false;
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
-    final res = await HoDApi.queue();
+
+    final results = await Future.wait([
+      HoDApi.queue(),
+      HoDApi.analytics(),
+      HoDApi.activeSessions(),
+    ]);
+    if (!mounted) {
+      _busy = false;
+      return;
+    }
+
+    final queueRes = results[0] as ApiResult<dynamic>;
+    final analyticsRes = results[1] as ApiResult<dynamic>;
+    final sessionsRes = results[2] as ApiResult<dynamic>;
+
     setState(() {
       _loading = false;
-      if (res.ok) {
-        final raw = res.data;
-        _requests = (raw is List ? raw : const [])
+      if (queueRes.ok) {
+        _requests = (queueRes.data is List ? queueRes.data : const [])
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
       } else {
-        _error = res.error;
+        _error = queueRes.error;
+      }
+
+      if (analyticsRes.ok) {
+        _analytics = Map<String, dynamic>.from(analyticsRes.data ?? const {});
+      }
+
+      if (sessionsRes.ok) {
+        _sessions = (sessionsRes.data is List ? sessionsRes.data : const [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
       }
     });
+    _busy = false;
   }
 
-  Future<void> _openProof(Map<String, dynamic> r) async {
-    final b64 = r['attachment_base64']?.toString();
-    final mime = r['attachment_mime']?.toString();
+  Future<void> _logout() async {
+    AuthStore.clear();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const ODLoginUI()),
+    );
+  }
+
+  Future<void> _bulkApprove() async {
+    await HoDApi.bulkAction('all');
+    await _loadAll();
+  }
+
+  Future<void> _approve(Map<String, dynamic> row) async {
+    final reason = await _askReason(
+      context,
+      title: 'Approve OD',
+      label: 'Note / comment (optional)',
+      allowEmpty: true,
+    );
+
+    await HoDApi.action(
+      requestId: row['id'].toString(),
+      action: 'APPROVED',
+      reason: reason?.isEmpty == true ? 'Approved by HoD' : reason,
+    );
+    await _loadAll();
+  }
+
+  Future<void> _reject(Map<String, dynamic> row) async {
+    final reason = await _askReason(
+      context,
+      title: 'Reject OD',
+      label: 'Reason for rejection',
+    );
+    if (reason == null) return;
+
+    await HoDApi.action(
+      requestId: row['id'].toString(),
+      action: 'REJECTED',
+      reason: reason,
+    );
+    await _loadAll();
+  }
+
+  Future<void> _openProof(Map<String, dynamic> row) async {
+    final b64 = row['attachment_base64']?.toString();
+    final mime = row['attachment_mime']?.toString();
+
     if (b64 == null || mime == null || b64.isEmpty || mime.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -132,6 +148,7 @@ class _HoDQueueState extends State<_HoDQueue> {
       );
       return;
     }
+
     final bytes = base64Decode(b64);
     if (!mounted) return;
     showDialog(
@@ -149,472 +166,56 @@ class _HoDQueueState extends State<_HoDQueue> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red),
-              const SizedBox(height: 8),
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton(onPressed: _load, child: const Text('Retry')),
-            ],
-          ),
-        ),
-      );
-    }
-    return Column(
-      children: [
-        // Bulk approve banner
-        if (_requests.isNotEmpty)
-          Container(
-            color: kHoDRed.withOpacity(0.08),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${_requests.length} requests pending final approval',
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    HoDApi.bulkAction('all').then((_) => _load());
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kHoDRed,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Bulk Approve',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
+    final width = MediaQuery.of(context).size.width;
+    final desktop = width >= 1024;
+
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: kHoDBg,
+      drawer: desktop
+          ? null
+          : Drawer(
+              child: _Sidebar(current: _section, onTap: _onTapSection),
             ),
-          ),
-        Expanded(
-          child: _requests.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.check_circle_outline,
-                        size: 80,
-                        color: Colors.green,
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        'All approved!',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+      body: SafeArea(
+        child: Row(
+          children: [
+            if (desktop)
+              SizedBox(
+                width: 260,
+                child: _Sidebar(current: _section, onTap: _onTapSection),
+              ),
+            Expanded(
+              child: Column(
+                children: [
+                  _Topbar(
+                    title: _titleForSection(_section),
+                    isDesktop: desktop,
+                    onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
+                    onToggleTheme: ThemeController.toggle,
+                    onLogout: _logout,
                   ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _requests.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 14),
-                  itemBuilder: (_, i) {
-                    final r = _requests[i];
-                    final hasProof =
-                        (r['attachment_base64']?.toString().isNotEmpty ??
-                            false) &&
-                        (r['attachment_mime']?.toString().isNotEmpty ?? false);
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x11000000),
-                            blurRadius: 8,
-                            offset: Offset(0, 3),
+                  Expanded(
+                    child: _loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _error != null
+                        ? _ErrorPanel(error: _error!, onRetry: _loadAll)
+                        : RefreshIndicator(
+                            onRefresh: _loadAll,
+                            child: SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                20,
+                                20,
+                                28,
+                              ),
+                              child: _contentBySection(context),
+                            ),
                           ),
-                        ],
-                      ),
-                      child: IntrinsicHeight(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Container(
-                              width: 6,
-                              decoration: BoxDecoration(
-                                borderRadius: const BorderRadius.horizontal(
-                                  left: Radius.circular(20),
-                                ),
-                                color: kHoDRed,
-                              ),
-                            ),
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 18,
-                                          backgroundColor: kHoDRed,
-                                          child: Text(
-                                            (r['student_name'] as String? ??
-                                                'S')[0],
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                r['student_name'] as String? ??
-                                                    'Student',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                              Text(
-                                                'Request ID: ${r['id']}',
-                                                style: const TextStyle(
-                                                  color: Colors.grey,
-                                                  fontSize: 11,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.green.shade50,
-                                            borderRadius: BorderRadius.circular(
-                                              999,
-                                            ),
-                                          ),
-                                          child: const Row(
-                                            children: [
-                                              Icon(
-                                                Icons.verified,
-                                                size: 14,
-                                                color: Colors.green,
-                                              ),
-                                              SizedBox(width: 4),
-                                              Text(
-                                                'EC Confirmed',
-                                                style: TextStyle(
-                                                  color: Colors.green,
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Icon(
-                                          Icons.event,
-                                          size: 16,
-                                          color: Colors.grey,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            r['event_name'] as String? ?? '—',
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.calendar_month,
-                                          size: 16,
-                                          color: Colors.grey,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            '${r['start_date']} – ${r['end_date']}',
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.place,
-                                          size: 16,
-                                          color: Colors.grey,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            r['venue'] as String? ?? '—',
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    if (hasProof) ...[
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.photo_outlined,
-                                            size: 16,
-                                            color: Colors.black54,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              r['attachment_name']
-                                                      ?.toString() ??
-                                                  'image proof',
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          TextButton(
-                                            onPressed: () => _openProof(r),
-                                            child: const Text('View proof'),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: OutlinedButton(
-                                            onPressed: () async {
-                                              final reason = await _askReason(
-                                                context,
-                                                title: 'Reject OD',
-                                                label: 'Reason for rejection',
-                                              );
-                                              if (reason == null) return;
-                                              HoDApi.action(
-                                                requestId: r['id'].toString(),
-                                                action: 'REJECTED',
-                                                reason: reason,
-                                              ).then((_) => _load());
-                                            },
-                                            style: OutlinedButton.styleFrom(
-                                              side: const BorderSide(
-                                                color: Colors.red,
-                                              ),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                              ),
-                                            ),
-                                            child: const Text(
-                                              'Reject',
-                                              style: TextStyle(
-                                                color: Colors.red,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: ElevatedButton(
-                                            onPressed: () async {
-                                              final reason = await _askReason(
-                                                context,
-                                                title: 'Approve OD',
-                                                label:
-                                                    'Note / comment (optional)',
-                                                allowEmpty: true,
-                                              );
-                                              HoDApi.action(
-                                                requestId: r['id'].toString(),
-                                                action: 'APPROVED',
-                                                reason: reason?.isEmpty == true
-                                                    ? 'Approved by HoD'
-                                                    : reason,
-                                              ).then((_) => _load());
-                                            },
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.green,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                              ),
-                                            ),
-                                            child: const Text(
-                                              'Approve',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-class _HoDAnalytics extends StatefulWidget {
-  const _HoDAnalytics();
-
-  @override
-  State<_HoDAnalytics> createState() => _HoDAnalyticsState();
-}
-
-class _HoDAnalyticsState extends State<_HoDAnalytics> {
-  bool _loading = true;
-  String? _error;
-  Map<String, dynamic> _data = const {};
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    final res = await HoDApi.analytics();
-    setState(() {
-      _loading = false;
-      if (res.ok) {
-        _data = Map<String, dynamic>.from(res.data ?? const {});
-      } else {
-        _error = res.error;
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red),
-              const SizedBox(height: 8),
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              ElevatedButton(onPressed: _load, child: const Text('Retry')),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final total = (_data['total'] ?? 0).toString();
-    final approved = (_data['approved'] ?? 0).toString();
-    final pending = (_data['pending'] ?? 0).toString();
-    final rejected = (_data['rejected'] ?? 0).toString();
-    final activeNow = (_data['active_now'] ?? 0).toString();
-
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Real-time',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.4,
-              children: [
-                _statCard('Total', total, Icons.assignment, kBlue),
-                _statCard(
-                  'Approved',
-                  approved,
-                  Icons.check_circle,
-                  Colors.green,
-                ),
-                _statCard('Pending', pending, Icons.pending, Colors.orange),
-                _statCard('Rejected', rejected, Icons.cancel, Colors.red),
-                _statCard('Active Now', activeNow, Icons.circle, kHoDRed),
-              ],
             ),
           ],
         ),
@@ -622,264 +223,53 @@ class _HoDAnalyticsState extends State<_HoDAnalytics> {
     );
   }
 
-  Widget _statCard(String label, String value, IconData icon, Color color) =>
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            Text(label, style: const TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
-}
-
-class _HoDMonitor extends StatefulWidget {
-  const _HoDMonitor();
-
-  @override
-  State<_HoDMonitor> createState() => _HoDMonitorState();
-}
-
-class _HoDMonitorState extends State<_HoDMonitor> {
-  bool _loading = true;
-  String? _error;
-  List<Map<String, dynamic>> _sessions = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
+  void _onTapSection(int index) {
+    setState(() => _section = index);
+    Navigator.of(context).maybePop();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    final res = await HoDApi.activeSessions();
-    setState(() {
-      _loading = false;
-      if (res.ok) {
-        _sessions = (res.data ?? const [])
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
-      } else {
-        _error = res.error;
-      }
-    });
-  }
-
-  String _fmtUntil(Map<String, dynamic> s) {
-    final endRaw = s['end_datetime']?.toString();
-    if (endRaw == null || endRaw.isEmpty) return '—';
-    final dt = DateTime.tryParse(endRaw);
-    if (dt == null) return endRaw;
-    String two(int x) => x.toString().padLeft(2, '0');
-    return 'Until ${two(dt.hour)}:${two(dt.minute)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+  String _titleForSection(int section) {
+    switch (section) {
+      case 1:
+        return 'Participants';
+      case 2:
+        return 'Events';
+      case 3:
+        return 'Settings';
+      default:
+        return 'Dashboard';
     }
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red),
-              const SizedBox(height: 8),
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton(onPressed: _load, child: const Text('Retry')),
-            ],
-          ),
-        ),
-      );
+  }
+
+  Widget _contentBySection(BuildContext context) {
+    switch (_section) {
+      case 1:
+        return _ParticipantsTable(
+          requests: _requests,
+          onApprove: _approve,
+          onReject: _reject,
+          onViewProof: _openProof,
+        );
+      case 2:
+        return _EventsPanel(sessions: _sessions, requests: _requests);
+      case 3:
+        return _SettingsPanel(onLogout: _logout);
+      default:
+        return _DashboardPanel(
+          requests: _requests,
+          sessions: _sessions,
+          analytics: _analytics,
+          onBulkApprove: _bulkApprove,
+        );
     }
-
-    final count = _sessions.length;
-
-    return Column(
-      children: [
-        Container(
-          color: Colors.green.shade50,
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.circle, color: Colors.green.shade600, size: 12),
-              const SizedBox(width: 8),
-              Text(
-                '$count active OD session${count == 1 ? '' : 's'}',
-                style: TextStyle(
-                  color: Colors.green.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: count == 0
-              ? const Center(
-                  child: Text(
-                    'No active OD sessions right now.',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _sessions.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (_, i) {
-                      final s = _sessions[i];
-                      final eventName = s['event_name']?.toString() ?? 'Event';
-                      final uid = s['student_unique_id']?.toString() ?? '—';
-                      final approvedBy =
-                          s['approved_by_name']?.toString() ?? '—';
-                      final until = _fmtUntil(s);
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: const [
-                            BoxShadow(color: Colors.black12, blurRadius: 4),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: Colors.green.shade50,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.person,
-                                color: Colors.green.shade600,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    uid,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    eventName,
-                                    style: const TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  Text(
-                                    '$until  •  Approved by $approvedBy',
-                                    style: TextStyle(
-                                      color: Colors.green.shade700,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-        ),
-      ],
-    );
   }
 }
 
-class _ScanPageHoD extends StatelessWidget {
-  const _ScanPageHoD();
+class _Sidebar extends StatelessWidget {
+  const _Sidebar({required this.current, required this.onTap});
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.black,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.qr_code_scanner, size: 120, color: Colors.white),
-            const SizedBox(height: 24),
-            const Text(
-              'Scan Student ID Card',
-              style: TextStyle(
-                fontSize: 22,
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Verify student OD status',
-              style: TextStyle(color: Colors.white60),
-            ),
-            const SizedBox(height: 48),
-            ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.camera_alt),
-              label: const Text('Open Camera'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kHoDRed,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HoDProfile extends StatelessWidget {
-  const _HoDProfile();
+  final int current;
+  final ValueChanged<int> onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -887,93 +277,760 @@ class _HoDProfile extends StatelessWidget {
     final dept = AuthStore.userDepartment ?? 'Department';
     final initials = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'H';
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+    return Container(
+      color: kHoDSidebar,
       child: Column(
         children: [
-          const SizedBox(height: 16),
-          CircleAvatar(
-            radius: 50,
-            backgroundColor: kHoDRed,
-            child: Text(
-              initials,
-              style: const TextStyle(
-                fontSize: 32,
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            name,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          Text(
-            'Head of Department · $dept',
-            style: const TextStyle(color: Colors.grey),
-          ),
-          const SizedBox(height: 24),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: const [
-                BoxShadow(color: Colors.black12, blurRadius: 4),
-              ],
-            ),
-            child: Column(
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
               children: [
-                _row('Staff ID', 'RIT-HOD-001'),
-                const Divider(height: 1),
-                _row('Department', dept),
-                const Divider(height: 1),
-                _row('Total Students', '180'),
-                const Divider(height: 1),
-                _row('Pending Approvals', '3'),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.school, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'OD Admin',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.logout, color: Colors.red),
-              label: const Text(
-                'Logout',
-                style: TextStyle(color: Colors.red, fontSize: 16),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.red),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.white,
+                  foregroundColor: kHoDSidebar,
+                  child: Text(initials),
                 ),
-              ),
-              onPressed: () {
-                AuthStore.clear();
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ODLoginUI()),
-                );
-              },
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        dept,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFBFD0F0),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _SidebarItem(
+            icon: Icons.dashboard_rounded,
+            label: 'Dashboard',
+            active: current == 0,
+            onTap: () => onTap(0),
+          ),
+          _SidebarItem(
+            icon: Icons.people_alt_rounded,
+            label: 'Participants',
+            active: current == 1,
+            onTap: () => onTap(1),
+          ),
+          _SidebarItem(
+            icon: Icons.event_note_rounded,
+            label: 'Events',
+            active: current == 2,
+            onTap: () => onTap(2),
+          ),
+          _SidebarItem(
+            icon: Icons.settings_rounded,
+            label: 'Settings',
+            active: current == 3,
+            onTap: () => onTap(3),
+          ),
+          const Spacer(),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'OD Management 2026',
+              style: TextStyle(color: Color(0xFF95ADD9), fontSize: 12),
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _row(String l, String v) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+class _SidebarItem extends StatelessWidget {
+  const _SidebarItem({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      child: Material(
+        color: active ? Colors.white.withOpacity(0.16) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(icon, color: Colors.white),
+                const SizedBox(width: 12),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Topbar extends StatelessWidget {
+  const _Topbar({
+    required this.title,
+    required this.isDesktop,
+    required this.onMenuTap,
+    required this.onToggleTheme,
+    required this.onLogout,
+  });
+
+  final String title;
+  final bool isDesktop;
+  final VoidCallback onMenuTap;
+  final VoidCallback onToggleTheme;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = AuthStore.fullName ?? 'HoD';
+
+    return Container(
+      height: 72,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE3E8F2))),
+      ),
+      child: Row(
+        children: [
+          if (!isDesktop)
+            IconButton(icon: const Icon(Icons.menu), onPressed: onMenuTap),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.brightness_6_outlined),
+            tooltip: 'Toggle theme',
+            onPressed: onToggleTheme,
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: 'Logout',
+            onPressed: onLogout,
+          ),
+          const SizedBox(width: 4),
+          CircleAvatar(
+            backgroundColor: kHoDPrimary.withOpacity(0.1),
+            foregroundColor: kHoDPrimary,
+            child: Text(name.substring(0, 1).toUpperCase()),
+          ),
+          const SizedBox(width: 8),
+          if (isDesktop)
+            Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardPanel extends StatelessWidget {
+  const _DashboardPanel({
+    required this.requests,
+    required this.sessions,
+    required this.analytics,
+    required this.onBulkApprove,
+  });
+
+  final List<Map<String, dynamic>> requests;
+  final List<Map<String, dynamic>> sessions;
+  final Map<String, dynamic> analytics;
+  final VoidCallback onBulkApprove;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = (analytics['total'] ?? requests.length).toString();
+    final approved = (analytics['approved'] ?? 0).toString();
+    final pending = (analytics['pending'] ?? requests.length).toString();
+    final rejected = (analytics['rejected'] ?? 0).toString();
+    final activeNow = (analytics['active_now'] ?? sessions.length).toString();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(l, style: const TextStyle(color: Colors.grey)),
-        Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
+        Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: [
+            _StatCard(
+              label: 'Total Requests',
+              value: total,
+              icon: Icons.stacked_bar_chart_rounded,
+              color: kHoDPrimary,
+            ),
+            _StatCard(
+              label: 'Approved',
+              value: approved,
+              icon: Icons.check_circle_rounded,
+              color: kHoDAccent,
+            ),
+            _StatCard(
+              label: 'Pending',
+              value: pending,
+              icon: Icons.hourglass_bottom_rounded,
+              color: const Color(0xFFE69B00),
+            ),
+            _StatCard(
+              label: 'Rejected',
+              value: rejected,
+              icon: Icons.cancel_rounded,
+              color: const Color(0xFFC62828),
+            ),
+            _StatCard(
+              label: 'Active Sessions',
+              value: activeNow,
+              icon: Icons.flash_on_rounded,
+              color: const Color(0xFF8E24AA),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE6ECF5)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${requests.length} participant requests are waiting for a final decision',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: requests.isEmpty ? null : onBulkApprove,
+                icon: const Icon(Icons.done_all),
+                style: FilledButton.styleFrom(backgroundColor: kHoDPrimary),
+                label: const Text('Bulk Approve'),
+              ),
+            ],
+          ),
+        ),
       ],
-    ),
-  );
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 210,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE6ECF5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 2),
+            Text(label, style: const TextStyle(color: Color(0xFF60708A))),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ParticipantsTable extends StatelessWidget {
+  const _ParticipantsTable({
+    required this.requests,
+    required this.onApprove,
+    required this.onReject,
+    required this.onViewProof,
+  });
+
+  final List<Map<String, dynamic>> requests;
+  final ValueChanged<Map<String, dynamic>> onApprove;
+  final ValueChanged<Map<String, dynamic>> onReject;
+  final ValueChanged<Map<String, dynamic>> onViewProof;
+
+  @override
+  Widget build(BuildContext context) {
+    if (requests.isEmpty) {
+      return const _EmptyState(
+        icon: Icons.inbox_outlined,
+        title: 'No participant requests right now',
+        subtitle: 'New requests will appear here automatically.',
+      );
+    }
+
+    final desktop = MediaQuery.of(context).size.width >= 900;
+    if (!desktop) {
+      return Column(
+        children: requests
+            .map(
+              (row) => _ParticipantCard(
+                row: row,
+                onApprove: () => onApprove(row),
+                onReject: () => onReject(row),
+                onViewProof: () => onViewProof(row),
+              ),
+            )
+            .toList(),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6ECF5)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: const [
+            DataColumn(label: Text('Participant')),
+            DataColumn(label: Text('Event')),
+            DataColumn(label: Text('Date')),
+            DataColumn(label: Text('Venue')),
+            DataColumn(label: Text('Status')),
+            DataColumn(label: Text('Actions')),
+          ],
+          rows: requests.map((row) {
+            final hasProof =
+                (row['attachment_base64']?.toString().isNotEmpty ?? false) &&
+                (row['attachment_mime']?.toString().isNotEmpty ?? false);
+            return DataRow(
+              cells: [
+                DataCell(Text(row['student_name']?.toString() ?? 'Student')),
+                DataCell(
+                  Text(row['event_name']?.toString() ?? 'Untitled event'),
+                ),
+                DataCell(
+                  Text(
+                    '${row['start_date'] ?? '---'} - ${row['end_date'] ?? '---'}',
+                  ),
+                ),
+                DataCell(Text(row['venue']?.toString() ?? '---')),
+                DataCell(_statusChip('Pending')),
+                DataCell(
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      TextButton(
+                        onPressed: () => onApprove(row),
+                        child: const Text('Approve'),
+                      ),
+                      TextButton(
+                        onPressed: () => onReject(row),
+                        child: const Text('Reject'),
+                      ),
+                      if (hasProof)
+                        TextButton(
+                          onPressed: () => onViewProof(row),
+                          child: const Text('View Proof'),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _statusChip(String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3DB),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        value,
+        style: const TextStyle(
+          color: Color(0xFF9C6B00),
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _ParticipantCard extends StatelessWidget {
+  const _ParticipantCard({
+    required this.row,
+    required this.onApprove,
+    required this.onReject,
+    required this.onViewProof,
+  });
+
+  final Map<String, dynamic> row;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+  final VoidCallback onViewProof;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasProof =
+        (row['attachment_base64']?.toString().isNotEmpty ?? false) &&
+        (row['attachment_mime']?.toString().isNotEmpty ?? false);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE6ECF5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            row['student_name']?.toString() ?? 'Student',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(row['event_name']?.toString() ?? 'Untitled event'),
+          const SizedBox(height: 8),
+          Text('${row['start_date'] ?? '---'} - ${row['end_date'] ?? '---'}'),
+          Text(row['venue']?.toString() ?? '---'),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton(onPressed: onApprove, child: const Text('Approve')),
+              OutlinedButton(onPressed: onReject, child: const Text('Reject')),
+              if (hasProof)
+                TextButton(
+                  onPressed: onViewProof,
+                  child: const Text('View Proof'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventsPanel extends StatelessWidget {
+  const _EventsPanel({required this.sessions, required this.requests});
+
+  final List<Map<String, dynamic>> sessions;
+  final List<Map<String, dynamic>> requests;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE6ECF5)),
+          ),
+          child: Text(
+            'Active sessions: ${sessions.length} | Pending event requests: ${requests.length}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (sessions.isEmpty)
+          const _EmptyState(
+            icon: Icons.event_busy_outlined,
+            title: 'No active OD events',
+            subtitle:
+                'Once approved students are in-session, they will show up here.',
+          )
+        else
+          ...sessions.map((s) {
+            final event = s['event_name']?.toString() ?? 'Event';
+            final student = s['student_unique_id']?.toString() ?? '---';
+            final approvedBy = s['approved_by_name']?.toString() ?? '---';
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE6ECF5)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: kHoDAccent.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.event_available, color: kHoDAccent),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          event,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          'Student ID: $student',
+                          style: const TextStyle(color: Color(0xFF66768F)),
+                        ),
+                        Text(
+                          'Approved by: $approvedBy',
+                          style: const TextStyle(color: Color(0xFF66768F)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+      ],
+    );
+  }
+}
+
+class _SettingsPanel extends StatelessWidget {
+  const _SettingsPanel({required this.onLogout});
+
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = AuthStore.fullName ?? 'HoD';
+    final dept = AuthStore.userDepartment ?? 'Department';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6ECF5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Profile',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 14),
+          _settingRow('Name', name),
+          _settingRow('Role', 'Head of Department'),
+          _settingRow('Department', dept),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: onLogout,
+            icon: const Icon(Icons.logout, color: Colors.red),
+            label: const Text('Logout', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _settingRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(color: Color(0xFF66768F)),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorPanel extends StatelessWidget {
+  const _ErrorPanel({required this.error, required this.onRetry});
+
+  final String error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red),
+            const SizedBox(height: 8),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.red),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6ECF5)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 58, color: const Color(0xFF9AAAC4)),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFF66768F)),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 Future<String?> _askReason(

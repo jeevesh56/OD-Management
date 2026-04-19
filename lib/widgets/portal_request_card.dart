@@ -12,6 +12,7 @@ class PortalRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final status = r['status']?.toString() ?? '';
     final badgeColor = portalOdStatusColor(status);
     final title = r['event_name']?.toString() ?? '—';
@@ -86,11 +87,12 @@ class PortalRequestCard extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 16),
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(20),
             boxShadow: const [
-              BoxShadow(blurRadius: 14, color: Colors.black12),
+              BoxShadow(blurRadius: 14, color: Color(0x1F000000)),
             ],
+            border: Border.all(color: scheme.outlineVariant),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -131,12 +133,11 @@ class PortalRequestCard extends StatelessWidget {
                 children: [
                   Text(
                     dates,
-                    style:
-                        const TextStyle(color: Colors.grey, fontSize: 14),
+                    style: TextStyle(color: scheme.onSurface.withOpacity(0.72), fontSize: 14),
                   ),
                   const Spacer(),
                   Icon(Icons.chevron_right_rounded,
-                      color: Colors.grey.shade400),
+                      color: scheme.onSurface.withOpacity(0.35)),
                 ],
               ),
               const SizedBox(height: 12),
@@ -190,7 +191,7 @@ class PortalRequestCard extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xfff3f6ff),
+                  color: scheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(

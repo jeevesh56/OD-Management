@@ -16,6 +16,7 @@ class PortalRequestDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final status = request['status']?.toString() ?? '';
     final badgeColor = portalOdStatusColor(status);
     final stages = odTimelineStagesFromRequest(request);
@@ -38,12 +39,11 @@ class PortalRequestDetailScreen extends StatelessWidget {
     final hodRejected = status == 'HOD_REJECTED';
 
     return Scaffold(
-      backgroundColor: const Color(0xfff5f8fc),
+      backgroundColor: scheme.surfaceContainerLowest,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.white.withValues(alpha: 0.92),
+        backgroundColor: scheme.surface.withValues(alpha: 0.92),
         elevation: 0,
-        foregroundColor: Colors.black87,
         title: const Text(
           'Request details',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
@@ -69,7 +69,7 @@ class PortalRequestDetailScreen extends StatelessWidget {
                     delegate: SliverChildListDelegate([
                       Container(
                         padding: const EdgeInsets.all(22),
-                        decoration: portalWhiteCardDecoration(),
+                        decoration: portalCardDecoration(context),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -207,20 +207,20 @@ class PortalRequestDetailScreen extends StatelessWidget {
                       const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.all(20),
-                        decoration: portalWhiteCardDecoration(radius: 18),
+                        decoration: portalCardDecoration(context, radius: 18),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.timeline,
-                                    color: Colors.blue.shade700, size: 22),
+                                Icon(Icons.timeline, color: scheme.primary, size: 22),
                                 const SizedBox(width: 8),
-                                const Text(
+                                Text(
                                   'Status timeline',
                                   style: TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.bold,
+                                    color: scheme.onSurface,
                                   ),
                                 ),
                               ],
@@ -229,7 +229,7 @@ class PortalRequestDetailScreen extends StatelessWidget {
                             Text(
                               'Track each stage of your OD approval.',
                               style: TextStyle(
-                                color: Colors.grey.shade600,
+                                color: scheme.onSurface.withOpacity(0.72),
                                 fontSize: 13,
                               ),
                             ),

@@ -169,7 +169,11 @@ class _HoDLoginUIState extends State<HoDLoginUI> {
       child: TextField(
         controller: _passwordController,
         obscureText: _obscurePassword,
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+        autofillHints: const [AutofillHints.password],
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.98),
+          fontSize: 14,
+        ),
         decoration: InputDecoration(
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
@@ -182,10 +186,7 @@ class _HoDLoginUIState extends State<HoDLoginUI> {
             size: 20,
           ),
           hintText: "Password",
-          hintStyle: const TextStyle(
-            color: Colors.white54,
-            fontSize: 14,
-          ),
+          hintStyle: TextStyle(color: Colors.white.withOpacity(0.72), fontSize: 14),
           suffixIcon: IconButton(
             icon: Icon(
               _obscurePassword ? Icons.visibility_off : Icons.visibility,
@@ -216,7 +217,14 @@ class _HoDLoginUIState extends State<HoDLoginUI> {
       child: TextField(
         controller: controller,
         obscureText: obscureText,
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+        autofillHints: const [AutofillHints.username, AutofillHints.email],
+        keyboardType: hint.toLowerCase().contains('email')
+            ? TextInputType.emailAddress
+            : TextInputType.text,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.98),
+          fontSize: 14,
+        ),
         decoration: InputDecoration(
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
@@ -225,10 +233,7 @@ class _HoDLoginUIState extends State<HoDLoginUI> {
           ),
           prefixIcon: Icon(icon, color: Colors.white70, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(
-            color: Colors.white54,
-            fontSize: 14,
-          ),
+          hintStyle: TextStyle(color: Colors.white.withOpacity(0.72), fontSize: 14),
         ),
       ),
     );

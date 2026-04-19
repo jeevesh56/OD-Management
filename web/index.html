@@ -31,8 +31,139 @@
 
   <title>OD Management System</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    :root {
+      --glow-color-inner: rgba(104, 133, 255, 0.28);
+      --glow-color-mid: rgba(134, 97, 255, 0.20);
+      --glow-color-outer: rgba(71, 104, 247, 0.00);
+      --glow-size: 500px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --glow-color-inner: rgba(120, 157, 255, 0.32);
+        --glow-color-mid: rgba(168, 120, 255, 0.24);
+        --glow-color-outer: rgba(94, 128, 255, 0.00);
+      }
+    }
+
+    html,
+    body {
+      overflow: hidden;
+    }
+
+    body {
+      position: relative;
+      margin: 0;
+      isolation: isolate;
+    }
+
+    #cursor-glow {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: var(--glow-size);
+      height: var(--glow-size);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+      will-change: transform, opacity;
+      transform: translate3d(-9999px, -9999px, 0);
+      opacity: 0;
+      filter: blur(10px);
+      background: radial-gradient(
+        circle,
+        var(--glow-color-inner) 0%,
+        var(--glow-color-mid) 38%,
+        var(--glow-color-outer) 70%
+      );
+      transition: opacity 180ms ease-out;
+    }
+
+    flutter-view,
+    flt-glass-pane,
+    #flt-glass-pane {
+      position: relative;
+      z-index: 1;
+    }
+
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    textarea:-webkit-autofill,
+    textarea:-webkit-autofill:hover,
+    textarea:-webkit-autofill:focus {
+      -webkit-text-fill-color: #f8fbff;
+      caret-color: #f8fbff;
+      transition: background-color 9999s ease-out 0s;
+      box-shadow: inset 0 0 0 1000px #141941;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: rgba(248, 251, 255, 0.72);
+    }
+  </style>
 </head>
 <body>
+  <div id="cursor-glow" aria-hidden="true"></div>
   <script src="flutter_bootstrap.js" async></script>
+  <script>
+    (function () {
+      var glow = document.getElementById('cursor-glow');
+      if (!glow) return;
+
+      var pointerFine = window.matchMedia('(pointer:fine)').matches;
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!pointerFine || reduceMotion) {
+        glow.style.display = 'none';
+        return;
+      }
+
+      var targetX = window.innerWidth * 0.5;
+      var targetY = window.innerHeight * 0.35;
+      var currentX = targetX;
+      var currentY = targetY;
+      var rafId = 0;
+      var glowSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--glow-size')) || 500;
+      var half = glowSize * 0.5;
+      var smoothing = 0.14;
+
+      function updateGlowPosition() {
+        currentX += (targetX - currentX) * smoothing;
+        currentY += (targetY - currentY) * smoothing;
+
+        glow.style.transform = 'translate3d(' + (currentX - half) + 'px,' + (currentY - half) + 'px,0)';
+        rafId = window.requestAnimationFrame(updateGlowPosition);
+      }
+
+      function onPointerMove(event) {
+        targetX = event.clientX;
+        targetY = event.clientY;
+        glow.style.opacity = '1';
+      }
+
+      function onPointerLeave() {
+        glow.style.opacity = '0';
+      }
+
+      function onResize() {
+        glowSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--glow-size')) || 500;
+        half = glowSize * 0.5;
+      }
+
+      window.addEventListener('pointermove', onPointerMove, { passive: true });
+      window.addEventListener('pointerleave', onPointerLeave, { passive: true });
+      window.addEventListener('blur', onPointerLeave, { passive: true });
+      window.addEventListener('resize', onResize, { passive: true });
+      rafId = window.requestAnimationFrame(updateGlowPosition);
+
+      window.addEventListener('beforeunload', function () {
+        if (rafId) {
+          window.cancelAnimationFrame(rafId);
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -33,18 +33,18 @@ class PortalQrScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final name = AuthStore.fullName ?? 'Student';
     final reg = AuthStore.registrationFromLoginEmail().isNotEmpty
         ? AuthStore.registrationFromLoginEmail()
         : (AuthStore.studentProfile?['register_number']?.toString() ?? '—');
 
     return Scaffold(
-      backgroundColor: const Color(0xfff5f8fc),
+      backgroundColor: scheme.surfaceContainerLowest,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.white.withValues(alpha: 0.92),
+        backgroundColor: scheme.surface.withValues(alpha: 0.92),
         elevation: 0,
-        foregroundColor: Colors.black87,
         title: const Text(
           'OD pass',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -78,22 +78,22 @@ class PortalQrScreen extends StatelessWidget {
                     'Show this at the verification desk',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.grey.shade600,
+                      color: scheme.onSurface.withOpacity(0.72),
                       fontSize: 15,
                     ),
                   ),
                   const SizedBox(height: 28),
                   Container(
                     padding: const EdgeInsets.all(28),
-                    decoration: portalWhiteCardDecoration(radius: 24),
+                    decoration: portalCardDecoration(context, radius: 24),
                     child: Column(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: scheme.surface,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.black12),
+                            border: Border.all(color: scheme.outlineVariant),
                           ),
                           child: QrImageView(
                             data: _qrPayload,
@@ -101,13 +101,13 @@ class PortalQrScreen extends StatelessWidget {
                             size: 220,
                             eyeStyle: QrEyeStyle(
                               eyeShape: QrEyeShape.square,
-                              color: Colors.blue.shade900,
+                              color: scheme.primary,
                             ),
                             dataModuleStyle: QrDataModuleStyle(
                               dataModuleShape: QrDataModuleShape.square,
-                              color: Colors.blue.shade800,
+                              color: scheme.primary,
                             ),
-                            backgroundColor: Colors.white,
+                            backgroundColor: scheme.surface,
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -122,7 +122,7 @@ class PortalQrScreen extends StatelessWidget {
                         Text(
                           'Reg. No: $reg',
                           style: TextStyle(
-                            color: Colors.grey.shade700,
+                            color: scheme.onSurface.withOpacity(0.72),
                             fontSize: 15,
                           ),
                         ),
@@ -133,7 +133,7 @@ class PortalQrScreen extends StatelessWidget {
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.green.shade50,
+                            color: scheme.secondaryContainer,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
@@ -145,7 +145,7 @@ class PortalQrScreen extends StatelessWidget {
                               Text(
                                 'HoD approved OD',
                                 style: TextStyle(
-                                  color: Colors.green.shade800,
+                                  color: scheme.onSecondaryContainer,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),

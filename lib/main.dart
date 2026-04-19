@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:od/screens/login_screen.dart';
 
+import 'theme/app_theme.dart';
+
 void main() {
   runApp(const MyApp());
 }
@@ -26,9 +28,11 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           title: 'OD Management System',
           debugShowCheckedModeBanner: false,
-          theme: ThemeData.light(useMaterial3: true),
-          darkTheme: ThemeData.dark(useMaterial3: true),
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
           themeMode: themeMode,
+          themeAnimationDuration: const Duration(milliseconds: 220),
+          themeAnimationCurve: Curves.easeInOut,
           home: const ODLoginUI(),
         );
       },

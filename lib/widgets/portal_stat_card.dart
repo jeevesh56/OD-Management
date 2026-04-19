@@ -17,15 +17,17 @@ class PortalStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.all(4),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
-          BoxShadow(blurRadius: 10, color: Colors.black12),
+          BoxShadow(blurRadius: 10, color: Color(0x1F000000)),
         ],
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -37,7 +39,7 @@ class PortalStatCard extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.grey, fontSize: 11),
+            style: TextStyle(color: scheme.onSurface.withOpacity(0.72), fontSize: 11),
           ),
           const SizedBox(height: 4),
           Text(

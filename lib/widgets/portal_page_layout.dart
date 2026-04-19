@@ -9,13 +9,17 @@ class PortalDecoratedBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Stack(
       fit: StackFit.expand,
       children: [
-        const DecoratedBox(
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xffe9f2ff), Color(0xffffffff)],
+              colors: [
+                scheme.surfaceContainerLowest,
+                scheme.surfaceContainerHigh,
+              ],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -29,7 +33,7 @@ class PortalDecoratedBackground extends StatelessWidget {
             width: 280,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.blue.withValues(alpha: 0.08),
+              color: scheme.primary.withValues(alpha: 0.10),
             ),
           ),
         ),
@@ -41,7 +45,7 @@ class PortalDecoratedBackground extends StatelessWidget {
             width: 320,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.blue.withValues(alpha: 0.06),
+              color: scheme.primary.withValues(alpha: 0.06),
             ),
           ),
         ),
@@ -50,12 +54,25 @@ class PortalDecoratedBackground extends StatelessWidget {
   }
 }
 
+BoxDecoration portalCardDecoration(BuildContext context, {double radius = 20}) {
+  final scheme = Theme.of(context).colorScheme;
+  return BoxDecoration(
+    color: scheme.surface,
+    borderRadius: BorderRadius.circular(radius),
+    boxShadow: const [
+      BoxShadow(blurRadius: 14, color: Color(0x1F000000)),
+    ],
+    border: Border.all(color: scheme.outlineVariant),
+  );
+}
+
 BoxDecoration portalWhiteCardDecoration({double radius = 20}) {
   return BoxDecoration(
     color: Colors.white,
     borderRadius: BorderRadius.circular(radius),
     boxShadow: const [
-      BoxShadow(blurRadius: 14, color: Colors.black12),
+      BoxShadow(blurRadius: 14, color: Color(0x1F000000)),
     ],
+    border: Border.all(color: const Color(0xFFE7EDF5)),
   );
 }

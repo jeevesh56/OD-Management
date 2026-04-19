@@ -168,31 +168,32 @@ class _TimelineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final (Color dotBg, Color dotBorder, IconData icon, Color iconColor) =
         switch (stage.state) {
       OdStageState.completed => (
-          Colors.green.shade50,
+          scheme.secondaryContainer,
           Colors.green,
           Icons.check_rounded,
           Colors.green.shade700,
         ),
       OdStageState.current => (
-          Colors.orange.shade50,
+          scheme.primaryContainer,
           Colors.orange,
           Icons.more_horiz_rounded,
           Colors.orange.shade800,
         ),
       OdStageState.rejected => (
-          Colors.red.shade50,
+          scheme.errorContainer,
           Colors.red,
           Icons.close_rounded,
           Colors.red.shade700,
         ),
       OdStageState.pending => (
-          Colors.grey.shade100,
-          Colors.grey.shade400,
+          scheme.surfaceContainerHigh,
+          scheme.outline,
           Icons.schedule_rounded,
-          Colors.grey.shade600,
+          scheme.onSurface.withOpacity(0.65),
         ),
     };
 
@@ -223,7 +224,7 @@ class _TimelineRow extends StatelessWidget {
                         borderRadius: BorderRadius.circular(1),
                         color: stage.state == OdStageState.completed
                             ? Colors.green.shade200
-                            : Colors.grey.shade300,
+                            : scheme.outlineVariant,
                       ),
                     ),
                   ),
@@ -251,7 +252,7 @@ class _TimelineRow extends StatelessWidget {
                   Text(
                     stage.subtitle,
                     style: TextStyle(
-                      color: Colors.grey.shade700,
+                      color: scheme.onSurface.withOpacity(0.72),
                       fontSize: compact ? 13 : 14,
                       height: 1.35,
                     ),
@@ -261,7 +262,7 @@ class _TimelineRow extends StatelessWidget {
                     Text(
                       stage.dateLabel!,
                       style: TextStyle(
-                        color: Colors.blue.shade700,
+                        color: scheme.primary,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),

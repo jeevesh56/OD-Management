@@ -124,7 +124,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
                             child: const Text(
                               "Register",
                               style: TextStyle(
-                                color: Colors.white70,
+                                color: Color(0xFFF1F5FF),
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 decoration: TextDecoration.underline,
@@ -322,20 +322,24 @@ class _ODLoginUIState extends State<ODLoginUI> {
       child: TextField(
         controller: _passwordController,
         obscureText: _obscurePassword,
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+        autofillHints: const [AutofillHints.password],
+        style: TextStyle(
+          color: Colors.black87,
+          fontSize: 14,
+        ),
         decoration: InputDecoration(
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 12,
           ),
-          prefixIcon: Icon(Icons.lock_outline, color: Colors.white70, size: 20),
+          prefixIcon: const Icon(Icons.lock_outline, color: Colors.black54, size: 20),
           hintText: "Password",
-          hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
+          hintStyle: const TextStyle(color: Colors.black54, fontSize: 14),
           suffixIcon: IconButton(
             icon: Icon(
               _obscurePassword ? Icons.visibility_off : Icons.visibility,
-              color: Colors.white70,
+              color: Colors.black54,
               size: 22,
             ),
             onPressed: () {
@@ -362,16 +366,25 @@ class _ODLoginUIState extends State<ODLoginUI> {
       child: TextField(
         controller: controller,
         obscureText: obscureText,
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+        autofillHints: hint == "College Email"
+            ? const [AutofillHints.username, AutofillHints.email]
+            : null,
+        keyboardType: hint == "College Email"
+            ? TextInputType.emailAddress
+            : TextInputType.text,
+        style: TextStyle(
+          color: Colors.black87,
+          fontSize: 14,
+        ),
         decoration: InputDecoration(
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 12,
           ),
-          prefixIcon: Icon(icon, color: Colors.white70, size: 20),
+          prefixIcon: Icon(icon, color: Colors.black54, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
+          hintStyle: const TextStyle(color: Colors.black54, fontSize: 14),
         ),
       ),
     );

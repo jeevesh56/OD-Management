@@ -15,6 +15,9 @@ import 'widgets/portal_page_layout.dart';
 import 'widgets/portal_request_card.dart';
 import 'widgets/portal_stat_card.dart';
 
+const Color kStudentPrimary = Color(0xFF1257B0);
+const Color kStudentSidebar = Color(0xFF102A5C);
+
 // ─────────────────────────────────────────────────────────────────────────────
 class StudentHomeScreen extends StatefulWidget {
   const StudentHomeScreen({super.key});
@@ -24,95 +27,320 @@ class StudentHomeScreen extends StatefulWidget {
 }
 
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _tab = 0;
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = [
+      _Dashboard(
+        onCreateNewRequest: () => setState(() => _tab = 1),
+      ),
+      _NewODPage(
+        onSubmitted: () => setState(() => _tab = 0),
+      ),
+      const _HistoryPage(),
+      const _ProfilePage(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
+    final desktop = MediaQuery.of(context).size.width >= 1024;
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: kBlue,
-        automaticallyImplyLeading: false,
-        leading: IconButton(
-          icon: const Icon(Icons.brightness_6_outlined, color: Colors.white),
-          onPressed: ThemeController.toggle,
-          tooltip: 'Toggle theme',
-        ),
-        title: const Text(
-          'Student Portal',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () {
-              AuthStore.clear();
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const ODLoginUI(),
+      key: _scaffoldKey,
+      backgroundColor: scheme.surfaceContainerLowest,
+      drawer: desktop
+          ? null
+          : Drawer(
+              child: _StudentSidebar(
+                current: _tab,
+                onTap: _onSelectTab,
+              ),
+            ),
+      body: SafeArea(
+        child: Row(
+          children: [
+            if (desktop)
+              SizedBox(
+                width: 260,
+                child: _StudentSidebar(
+                  current: _tab,
+                  onTap: _onSelectTab,
                 ),
-              );
-            },
-          ),
-        ],
+              ),
+            Expanded(
+              child: Column(
+                children: [
+                  _StudentTopbar(
+                    title: _titleForTab(_tab),
+                    isDesktop: desktop,
+                    onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
+                    onToggleTheme: ThemeController.toggle,
+                    onLogout: _logout,
+                  ),
+                  Expanded(
+                    child: IndexedStack(
+                      index: _tab,
+                      children: _pages,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      body: _pageForIndex(_tab),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _tab,
-        selectedItemColor: kBlue,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        onTap: (i) => setState(() => _tab = i),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard),
+    );
+  }
+
+  void _onSelectTab(int index) {
+    setState(() => _tab = index);
+    Navigator.of(context).maybePop();
+  }
+
+  String _titleForTab(int index) {
+    switch (index) {
+      case 1:
+        return 'New OD';
+      case 2:
+        return 'History';
+      case 3:
+        return 'Profile';
+      default:
+        return 'Dashboard';
+    }
+  }
+
+  Future<void> _logout() async {
+    AuthStore.clear();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const ODLoginUI()),
+    );
+  }
+}
+
+class _StudentSidebar extends StatelessWidget {
+  const _StudentSidebar({required this.current, required this.onTap});
+
+  final int current;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = AuthStore.fullName ?? 'Student';
+    final dept = AuthStore.userDepartment ?? 'Department';
+
+    return Container(
+      color: kStudentSidebar,
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Icon(Icons.school_rounded, color: Colors.white),
+                SizedBox(width: 10),
+                Text(
+                  'Student Portal',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.09),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.white,
+                  foregroundColor: kStudentSidebar,
+                  child: Text(name.substring(0, 1).toUpperCase()),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        dept,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFC3D6FA),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _StudentSidebarItem(
+            icon: Icons.dashboard_rounded,
             label: 'Dashboard',
+            active: current == 0,
+            onTap: () => onTap(0),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_circle_outline),
+          _StudentSidebarItem(
+            icon: Icons.add_circle_outline_rounded,
             label: 'New OD',
+            active: current == 1,
+            onTap: () => onTap(1),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
+          _StudentSidebarItem(
+            icon: Icons.history_rounded,
             label: 'History',
+            active: current == 2,
+            onTap: () => onTap(2),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
+          _StudentSidebarItem(
+            icon: Icons.person_rounded,
             label: 'Profile',
+            active: current == 3,
+            onTap: () => onTap(3),
+          ),
+          const Spacer(),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'OD Management 2026',
+              style: TextStyle(color: Color(0xFF95B4E7), fontSize: 12),
+            ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _pageForIndex(int index) {
-    switch (index) {
-      case 0:
-        return _Dashboard(
-          onCreateNewRequest: () {
-            setState(() {
-              _tab = 1;
-            });
-          },
-        );
-      case 1:
-        return _NewODPage(
-          onSubmitted: () {
-            setState(() {
-              _tab = 0;
-            });
-          },
-        );
-      case 2:
-        return const _HistoryPage();
-      case 3:
-      default:
-        return const _ProfilePage();
-    }
+class _StudentSidebarItem extends StatelessWidget {
+  const _StudentSidebarItem({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      child: Material(
+        color: active ? Colors.white.withOpacity(0.16) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(icon, color: Colors.white),
+                const SizedBox(width: 12),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StudentTopbar extends StatelessWidget {
+  const _StudentTopbar({
+    required this.title,
+    required this.isDesktop,
+    required this.onMenuTap,
+    required this.onToggleTheme,
+    required this.onLogout,
+  });
+
+  final String title;
+  final bool isDesktop;
+  final VoidCallback onMenuTap;
+  final VoidCallback onToggleTheme;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = AuthStore.fullName ?? 'Student';
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      height: 72,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: Row(
+        children: [
+          if (!isDesktop)
+            IconButton(onPressed: onMenuTap, icon: const Icon(Icons.menu)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+          ),
+          const Spacer(),
+          IconButton(
+            onPressed: onToggleTheme,
+            icon: const Icon(Icons.brightness_6_outlined),
+          ),
+          IconButton(
+            onPressed: onLogout,
+            icon: const Icon(Icons.logout_rounded),
+          ),
+          CircleAvatar(
+            backgroundColor: kStudentPrimary.withOpacity(0.1),
+            foregroundColor: kStudentPrimary,
+            child: Text(name.substring(0, 1).toUpperCase()),
+          ),
+          if (isDesktop) ...[
+            const SizedBox(width: 8),
+            Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -128,6 +356,7 @@ class _Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<_Dashboard> {
   bool _loading = true;
+  bool _busy = false;
   List _requests = [];
   Map? _activeSession;
   String? _error;
@@ -140,6 +369,9 @@ class _DashboardState extends State<_Dashboard> {
   }
 
   Future<void> _load() async {
+    if (_busy) return;
+    _busy = true;
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -148,6 +380,10 @@ class _DashboardState extends State<_Dashboard> {
       OdApi.myRequests(),
       OdApi.activeSession(),
     ]);
+    if (!mounted) {
+      _busy = false;
+      return;
+    }
     final reqRes = results[0];
     final sessRes = results[1];
     setState(() {
@@ -156,32 +392,28 @@ class _DashboardState extends State<_Dashboard> {
       if (sessRes.ok) _activeSession = sessRes.data as Map?;
       if (!reqRes.ok) _error = reqRes.error;
     });
+    _busy = false;
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     if (_loading) {
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xffe9f2ff), Color(0xffffffff)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: const Center(child: CircularProgressIndicator()),
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          const PortalDecoratedBackground(bottomCircleOffset: 80),
+          const Center(child: CircularProgressIndicator()),
+        ],
       );
     }
     if (_error != null) {
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xffe9f2ff), Color(0xffffffff)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: _ErrorView(_error!, _load),
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          const PortalDecoratedBackground(bottomCircleOffset: 80),
+          _ErrorView(_error!, _load),
+        ],
       );
     }
 
@@ -216,188 +448,153 @@ class _DashboardState extends State<_Dashboard> {
 
     return RefreshIndicator(
       onRefresh: _load,
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xffe9f2ff), Color(0xffffffff)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -80,
-              top: -60,
-              child: Container(
-                height: 280,
-                width: 280,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.blue.withOpacity(0.08),
-                ),
-              ),
-            ),
-            Positioned(
-              left: -100,
-              bottom: 80,
-              child: Container(
-                height: 320,
-                width: 320,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.blue.withOpacity(0.06),
-                ),
-              ),
-            ),
-            SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1040),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Student Portal',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                        ),
+      child: Stack(
+        children: [
+          const PortalDecoratedBackground(bottomCircleOffset: 80),
+          SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1040),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Student Portal',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        welcomeSub,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: Colors.grey,
-                        ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      welcomeSub,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: scheme.onSurface.withOpacity(0.72),
                       ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: PortalStatCard(
-                              title: 'Total',
-                              value: '$total',
-                              icon: Icons.description,
-                              color: Colors.blue,
-                            ),
-                          ),
-                          Expanded(
-                            child: PortalStatCard(
-                              title: 'Approved',
-                              value: '$approved',
-                              icon: Icons.check_circle,
-                              color: Colors.green,
-                            ),
-                          ),
-                          Expanded(
-                            child: PortalStatCard(
-                              title: 'Pending',
-                              value: '$pending',
-                              icon: Icons.schedule,
-                              color: Colors.orange,
-                            ),
-                          ),
-                          Expanded(
-                            child: PortalStatCard(
-                              title: 'Rejected',
-                              value: '$rejected',
-                              icon: Icons.cancel,
-                              color: Colors.red,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      if (_activeSession?['has_active_session'] == true)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade50,
-                            border: Border.all(color: Colors.green.shade300),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.check_circle,
-                                  color: Colors.green.shade700),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  'OD active: $sessionLabel',
-                                  style: TextStyle(
-                                    color: Colors.green.shade900,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: const [
-                              BoxShadow(
-                                blurRadius: 8,
-                                color: Colors.black12,
-                              ),
-                            ],
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.info_outline, color: Colors.grey),
-                              SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  'No active OD session',
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                              ),
-                            ],
+                    ),
+                    const SizedBox(height: 20),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        SizedBox(
+                          width: 170,
+                          child: PortalStatCard(
+                            title: 'Total',
+                            value: '$total',
+                            icon: Icons.description,
+                            color: Colors.blue,
                           ),
                         ),
-                      const SizedBox(height: 20),
+                        SizedBox(
+                          width: 170,
+                          child: PortalStatCard(
+                            title: 'Approved',
+                            value: '$approved',
+                            icon: Icons.check_circle,
+                            color: Colors.green,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 170,
+                          child: PortalStatCard(
+                            title: 'Pending',
+                            value: '$pending',
+                            icon: Icons.schedule,
+                            color: Colors.orange,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 170,
+                          child: PortalStatCard(
+                            title: 'Rejected',
+                            value: '$rejected',
+                            icon: Icons.cancel,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (_activeSession?['has_active_session'] == true)
                       Container(
-                        padding: const EdgeInsets.all(4),
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(999),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x11000000),
-                              blurRadius: 6,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
+                          color: scheme.secondaryContainer,
+                          border: Border.all(color: scheme.secondary.withOpacity(0.5)),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(
                           children: [
-                            _topTabButton('My Requests', 0),
-                            _topTabButton('My QR Code', 1),
+                            Icon(Icons.check_circle, color: scheme.onSecondaryContainer),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'OD active: $sessionLabel',
+                                style: TextStyle(
+                                  color: scheme.onSecondaryContainer,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: portalCardDecoration(context, radius: 16),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, color: scheme.onSurface.withOpacity(0.72)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'No active OD session',
+                                style: TextStyle(color: scheme.onSurface.withOpacity(0.72)),
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 18),
-                      if (_tabIndex == 0)
-                        _buildRequestsSection()
-                      else
-                        _buildQrSection(context, name, sp, _requests),
-                    ],
-                  ),
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: scheme.surface,
+                        borderRadius: BorderRadius.circular(999),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x11000000),
+                            blurRadius: 6,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                        border: Border.all(color: scheme.outlineVariant),
+                      ),
+                      child: Row(
+                        children: [
+                          _topTabButton('My Requests', 0),
+                          _topTabButton('My QR Code', 1),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    if (_tabIndex == 0)
+                      _buildRequestsSection()
+                    else
+                      _buildQrSection(context, name, sp, _requests),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -415,7 +612,7 @@ class _DashboardState extends State<_Dashboard> {
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? Colors.black : Colors.transparent,
+            color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
             borderRadius: BorderRadius.circular(999),
           ),
           child: Center(
@@ -424,7 +621,9 @@ class _DashboardState extends State<_Dashboard> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: selected ? Colors.white : Colors.black87,
+                color: selected
+                    ? Theme.of(context).colorScheme.onPrimary
+                    : Theme.of(context).colorScheme.onSurface.withOpacity(0.84),
               ),
             ),
           ),
@@ -439,11 +638,9 @@ class _DashboardState extends State<_Dashboard> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: const [
-            BoxShadow(blurRadius: 14, color: Colors.black12),
-          ],
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         child: const Column(
           mainAxisSize: MainAxisSize.min,
@@ -489,6 +686,7 @@ class _DashboardState extends State<_Dashboard> {
     Map? sp,
     List requests,
   ) {
+    final scheme = Theme.of(context).colorScheme;
     final register = AuthStore.registrationFromLoginEmail().isNotEmpty
         ? AuthStore.registrationFromLoginEmail()
         : (sp?['register_number']?.toString() ?? '—');
@@ -508,7 +706,7 @@ class _DashboardState extends State<_Dashboard> {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(24),
-          decoration: portalWhiteCardDecoration(radius: 22),
+          decoration: portalCardDecoration(context, radius: 22),
           child: Column(
             children: [
               const Text(
@@ -521,21 +719,21 @@ class _DashboardState extends State<_Dashboard> {
               const SizedBox(height: 8),
               Text(
                 'Scan for identity at the desk',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                style: TextStyle(color: scheme.onSurface.withOpacity(0.72), fontSize: 14),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: scheme.surface,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.black12),
+                  border: Border.all(color: scheme.outlineVariant),
                 ),
                 child: QrImageView(
                   data: studentQrData,
                   size: 200,
-                  backgroundColor: Colors.white,
+                  backgroundColor: scheme.surface,
                 ),
               ),
               const SizedBox(height: 16),
@@ -549,7 +747,7 @@ class _DashboardState extends State<_Dashboard> {
               const SizedBox(height: 4),
               Text(
                 'Reg. No: $register',
-                style: TextStyle(color: Colors.grey.shade700),
+                style: TextStyle(color: scheme.onSurface.withOpacity(0.72)),
               ),
             ],
           ),
@@ -661,6 +859,11 @@ class _NewODPageState extends State<_NewODPage> {
   final _venueCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
 
+  List<Map<String, dynamic>> _events = [];
+  String? _selectedEventId;
+  bool _loadingEvents = true;
+  String? _eventsError;
+
   DateTime? _startDate;
   DateTime? _endDate;
   TimeOfDay? _startTime;
@@ -680,6 +883,48 @@ class _NewODPageState extends State<_NewODPage> {
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: c),
       );
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEvents();
+  }
+
+  @override
+  void dispose() {
+    _eventCtrl.dispose();
+    _orgCtrl.dispose();
+    _venueCtrl.dispose();
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadEvents() async {
+    final r = await OdApi.events();
+    if (!mounted) return;
+    setState(() {
+      _loadingEvents = false;
+      if (r.ok) {
+        _events = List<Map<String, dynamic>>.from(r.data ?? []);
+        if (_events.isNotEmpty) {
+          _syncEventSelection(_events.first['event_id']?.toString());
+        }
+      } else {
+        _eventsError = r.error;
+      }
+    });
+  }
+
+  void _syncEventSelection(String? eventId) {
+    final selected = _events.cast<Map<String, dynamic>>().firstWhere(
+          (event) => event['event_id']?.toString() == eventId,
+          orElse: () => <String, dynamic>{},
+        );
+    _selectedEventId = eventId;
+    _eventCtrl.text = selected['event_name']?.toString() ?? '';
+    _orgCtrl.text = selected['organiser_body']?.toString() ?? _orgCtrl.text;
+    _venueCtrl.text = selected['venue']?.toString() ?? _venueCtrl.text;
+  }
 
   // ── Web file picker using dart:html ───────────────────────────────────────
   Future<void> _pickFile() async {
@@ -785,8 +1030,16 @@ class _NewODPageState extends State<_NewODPage> {
   // ── Submit ─────────────────────────────────────────────────────────────────
   Future<void> _submit() async {
     // Validate
-    if (_eventCtrl.text.trim().isEmpty) {
-      _err('Enter event name');
+    if (_loadingEvents) {
+      _err('Events are still loading');
+      return;
+    }
+    if (_eventsError != null) {
+      _err('Unable to load events');
+      return;
+    }
+    if (_selectedEventId == null) {
+      _err('Select an event');
       return;
     }
     if (_orgCtrl.text.trim().isEmpty) {
@@ -824,6 +1077,11 @@ class _NewODPageState extends State<_NewODPage> {
 
     setState(() => _submitting = true);
 
+    final selectedEvent = _events.firstWhere(
+      (event) => event['event_id']?.toString() == _selectedEventId,
+      orElse: () => <String, dynamic>{},
+    );
+
     // Build reason — append file info if attached
     String reason = _reasonCtrl.text.trim();
     if (_fileName != null) {
@@ -831,14 +1089,15 @@ class _NewODPageState extends State<_NewODPage> {
     }
 
     final r = await OdApi.submit(
-      eventName: _eventCtrl.text.trim(),
-      organiser: _orgCtrl.text.trim(),
-      venue: _venueCtrl.text.trim(),
+      eventName: selectedEvent['event_name']?.toString() ?? _eventCtrl.text.trim(),
+      organiser: selectedEvent['organiser_body']?.toString() ?? _orgCtrl.text.trim(),
+      venue: selectedEvent['venue']?.toString() ?? _venueCtrl.text.trim(),
       startDate: _fmt(_startDate!),
       endDate: _fmt(_endDate!),
       startTime: _fmtTime(_startTime!),
       endTime: _fmtTime(_endTime!),
       reason: reason,
+      eventId: _selectedEventId,
       attachmentBase64: _fileBase64,
       attachmentMime: _fileMime,
       attachmentName: _fileName,
@@ -848,11 +1107,12 @@ class _NewODPageState extends State<_NewODPage> {
 
     if (!mounted) return;
     if (r.ok) {
-      _eventCtrl.clear();
-      _orgCtrl.clear();
-      _venueCtrl.clear();
-      _reasonCtrl.clear();
       setState(() {
+        _selectedEventId = null;
+        _eventCtrl.clear();
+        _orgCtrl.clear();
+        _venueCtrl.clear();
+        _reasonCtrl.clear();
         _startDate = null;
         _endDate = null;
         _startTime = null;
@@ -906,7 +1166,7 @@ class _NewODPageState extends State<_NewODPage> {
                   Text(
                     'Mentor → HoD',
                     style: TextStyle(
-                      color: Colors.grey.shade700,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.72),
                       fontSize: 15,
                     ),
                   ),
@@ -914,7 +1174,7 @@ class _NewODPageState extends State<_NewODPage> {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(24),
-                    decoration: portalWhiteCardDecoration(),
+                    decoration: portalCardDecoration(context),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -931,7 +1191,7 @@ class _NewODPageState extends State<_NewODPage> {
                   style: TextStyle(color: Colors.grey, fontSize: 13),
                 ),
                 const SizedBox(height: 18),
-                _field('Event Name *', _eventCtrl, 'e.g. National Symposium 2025'),
+                _eventSelector(),
                 _field('Organiser *', _orgCtrl, 'e.g. IEEE Chennai Section'),
                 _field('Venue *', _venueCtrl, 'e.g. Anna University, Chennai'),
                 // ── Date Range ──────────────────────────────────────────────
@@ -1199,6 +1459,60 @@ class _NewODPageState extends State<_NewODPage> {
         ),
       );
 
+  Widget _eventSelector() => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Event *',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (_loadingEvents)
+              const LinearProgressIndicator(minHeight: 2)
+            else if (_eventsError != null)
+              Text(
+                _eventsError!,
+                style: const TextStyle(color: Colors.red, fontSize: 13),
+              )
+            else if (_events.isEmpty)
+              Text(
+                'No events available right now.',
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+              )
+            else
+              DropdownButtonFormField<String>(
+                initialValue: _selectedEventId,
+                decoration: InputDecoration(
+                  border: _border(Colors.grey),
+                  enabledBorder: _border(Colors.grey),
+                  focusedBorder: _border(kBlue),
+                ),
+                items: _events
+                    .map(
+                      (event) => DropdownMenuItem<String>(
+                        value: event['event_id']?.toString(),
+                        child: Text(
+                          event['event_name']?.toString() ?? 'Untitled event',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _syncEventSelection(value);
+                  });
+                },
+              ),
+          ],
+        ),
+      );
+
   Widget _dateTile(
     String label,
     IconData icon,
@@ -1326,7 +1640,7 @@ class _HistoryPageState extends State<_HistoryPage> {
               padding: const EdgeInsets.all(32),
               child: Container(
                 padding: const EdgeInsets.all(28),
-                decoration: portalWhiteCardDecoration(),
+                decoration: portalCardDecoration(context),
                 child: const Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1433,7 +1747,7 @@ class _ProfilePage extends StatelessWidget {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 28),
-                decoration: portalWhiteCardDecoration(),
+                decoration: portalCardDecoration(context),
                 child: Column(
                   children: [
                     CircleAvatar(
@@ -1465,6 +1779,7 @@ class _ProfilePage extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               _infoCard(
+                context,
                 [
                   ('Department', sp['department'] ?? '—'),
                   ('Section', sp['section'] ?? '—'),
@@ -1490,7 +1805,7 @@ class _ProfilePage extends StatelessWidget {
                   ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.red),
-                    backgroundColor: Colors.white,
+                    backgroundColor: Theme.of(context).colorScheme.surface,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -1513,8 +1828,8 @@ class _ProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _infoCard(List<(String, String)> rows) => Container(
-        decoration: portalWhiteCardDecoration(radius: 16),
+    Widget _infoCard(BuildContext context, List<(String, String)> rows) => Container(
+      decoration: portalCardDecoration(context, radius: 16),
         child: Column(
           children: List.generate(
             rows.length,

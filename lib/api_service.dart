@@ -161,6 +161,7 @@ class MockOdStore {
     required String startTime,
     required String endTime,
     required String reason,
+    String? eventId,
     String? attachmentName,
     String? attachmentMime,
     String? attachmentBase64,
@@ -176,9 +177,10 @@ class MockOdStore {
       'start_time': startTime,
       'end_time': endTime,
       'reason': reason,
-      if (attachmentName != null) 'attachment_name': attachmentName,
-      if (attachmentMime != null) 'attachment_mime': attachmentMime,
-      if (attachmentBase64 != null) 'attachment_base64': attachmentBase64,
+      'event_id': eventId,
+      'attachment_name': attachmentName,
+      'attachment_mime': attachmentMime,
+      'attachment_base64': attachmentBase64,
       'status': 'PENDING',
       'created_at': DateTime.now().toIso8601String(),
       'student_name': AuthStore.fullName ?? 'Student',
@@ -246,6 +248,21 @@ class AuthApi {
 
 // ── OD REQUESTS ───────────────────────────────────────────────────────────────
 class OdApi {
+  static const List<Map<String, String>> _fallbackEvents = [
+    {
+      'event_id': 'fallback-1',
+      'event_name': 'Department Symposium',
+      'organiser_body': 'CSE Department',
+      'venue': 'Main Auditorium',
+    },
+    {
+      'event_id': 'fallback-2',
+      'event_name': 'Technical Workshop',
+      'organiser_body': 'IEEE Student Chapter',
+      'venue': 'Seminar Hall',
+    },
+  ];
+
   // Submit new OD request
   static Future<ApiResult<Map>> submit({
     required String eventName,
@@ -271,6 +288,7 @@ class OdApi {
         startTime: startTime,
         endTime: endTime,
         reason: reason,
+        eventId: eventId,
         attachmentName: attachmentName,
         attachmentMime: attachmentMime,
         attachmentBase64: attachmentBase64,
@@ -314,11 +332,40 @@ class OdApi {
         startTime: startTime,
         endTime: endTime,
         reason: reason,
+        eventId: eventId,
         attachmentName: attachmentName,
         attachmentMime: attachmentMime,
         attachmentBase64: attachmentBase64,
       );
       return ApiResult.success(request);
+    }
+  }
+
+  static Future<ApiResult<List>> events() async {
+    if (kUseMockApi) {
+      return ApiResult.success(List<Map<String, String>>.from(_fallbackEvents));
+    }
+
+    try {
+      final res = await http
+          .get(
+            Uri.parse('$kBaseUrl/api/events'),
+            headers: AuthStore.headers,
+          )
+          .timeout(const Duration(seconds: 10));
+
+      final body = jsonDecode(res.body);
+      if (res.statusCode == 200) {
+        final rawEvents = (body['events'] as List?) ?? const [];
+        if (rawEvents.isNotEmpty) {
+          return ApiResult.success(rawEvents);
+        }
+      }
+      // Fall back to local defaults when endpoint exists but has no data.
+      return ApiResult.success(List<Map<String, String>>.from(_fallbackEvents));
+    } catch (e) {
+      // Graceful fallback keeps New OD usable when backend endpoint is down.
+      return ApiResult.success(List<Map<String, String>>.from(_fallbackEvents));
     }
   }
 
@@ -525,8 +572,9 @@ class ECApi {
           .get(Uri.parse('$kBaseUrl/api/ec/queue'), headers: AuthStore.headers)
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
-      if (res.statusCode == 200)
+      if (res.statusCode == 200) {
         return ApiResult.success(body['queue'] as List);
+      }
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
       final pending = MockOdStore.items
@@ -595,8 +643,9 @@ class HoDApi {
           .get(Uri.parse('$kBaseUrl/api/hod/queue'), headers: AuthStore.headers)
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
-      if (res.statusCode == 200)
+      if (res.statusCode == 200) {
         return ApiResult.success(body['queue'] as List);
+      }
       return ApiResult.fail(body['error'] ?? 'Failed');
     } catch (e) {
       final pending = MockOdStore.items
