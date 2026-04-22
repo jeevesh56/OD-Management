@@ -1,10 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
+
+const Color kPrincipalPrimary = Color(0xFF1257B0);
+const Color kPrincipalAccent = Color(0xFF0E9F6E);
+const Color kPrincipalBg = Color(0xFFF4F7FB);
+const Color kPrincipalSidebar = Color(0xFF102A5C);
 
 class PrincipalHomeScreen extends StatefulWidget {
   const PrincipalHomeScreen({super.key});
@@ -14,11 +21,22 @@ class PrincipalHomeScreen extends StatefulWidget {
 }
 
 class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  int _section = 1; // default to OD Requests
   bool _loading = true;
   bool _busy = false;
   String? _error;
   List<Map<String, dynamic>> _queue = [];
   Timer? _timer;
+
+  List<Map<String, dynamic>> _mapList(dynamic data) {
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
 
   @override
   void initState() {
@@ -40,7 +58,12 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   Future<void> _loadQueue({bool silent = false}) async {
     if (_busy) return;
     _busy = true;
-    if (!silent && mounted) {
+    if (!mounted) {
+      _busy = false;
+      return;
+    }
+
+    if (!silent) {
       setState(() {
         _loading = true;
         _error = null;
@@ -54,68 +77,15 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
     }
 
     setState(() {
-      _loading = false;
+      if (!silent) _loading = false;
       if (res.ok) {
-        final data = res.data;
-        if (data is List) {
-          _queue = data
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
-        } else {
-          _queue = [];
-        }
+        _queue = _mapList(res.data);
       } else {
-        _error = res.error ?? 'Failed to load principal queue';
+        _error = res.error ?? 'Failed to load principal requests';
       }
     });
+
     _busy = false;
-  }
-
-  Future<void> _approveOne(Map<String, dynamic> row) async {
-    await PrincipalApi.action(
-      requestId: row['id'].toString(),
-      action: 'APPROVED',
-      reason: 'Approved by Principal',
-    );
-    await _loadQueue();
-  }
-
-  Future<void> _rejectOne(Map<String, dynamic> row) async {
-    final controller = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Reject request'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Reason'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Reject'),
-          ),
-        ],
-      ),
-    );
-    if (reason == null) return;
-
-    await PrincipalApi.action(
-      requestId: row['id'].toString(),
-      action: 'REJECTED',
-      reason: reason,
-    );
-    await _loadQueue();
-  }
-
-  Future<void> _bulkApproveEvent(String eventName) async {
-    await PrincipalApi.bulkApprove(eventName);
-    await _loadQueue();
   }
 
   Future<void> _logout() async {
@@ -127,99 +97,851 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
     );
   }
 
+  Future<void> _approve(Map<String, dynamic> row) async {
+    await PrincipalApi.action(
+      requestId: row['id'].toString(),
+      action: 'APPROVED',
+      reason: 'Approved by Principal',
+    );
+    await _loadQueue();
+  }
+
+  Future<void> _reject(Map<String, dynamic> row) async {
+    final reason = await _askReason(
+      context,
+      title: 'Reject OD',
+      label: 'Reason for rejection',
+    );
+    if (reason == null) return;
+
+    await PrincipalApi.action(
+      requestId: row['id'].toString(),
+      action: 'REJECTED',
+      reason: reason,
+    );
+    await _loadQueue();
+  }
+
+  Future<void> _bulkApproveSameEvent(String eventName) async {
+    if (eventName.trim().isEmpty) return;
+    await PrincipalApi.bulkApprove(eventName);
+    await _loadQueue();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final grouped = <String, List<Map<String, dynamic>>>{};
-    for (final row in _queue) {
-      final key = (row['event_name']?.toString().trim().isNotEmpty == true)
-          ? row['event_name'].toString().trim()
-          : 'Unknown event';
-      grouped.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(row);
-    }
+    final desktop = MediaQuery.of(context).size.width >= 1024;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Principal Dashboard'),
-        actions: [
-          IconButton(onPressed: ThemeController.toggle, icon: const Icon(Icons.brightness_6_outlined)),
-          IconButton(onPressed: _logout, icon: const Icon(Icons.logout_rounded)),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : RefreshIndicator(
-                  onRefresh: _loadQueue,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: grouped.entries.map((entry) {
-                      final eventName = entry.key;
-                      final items = entry.value;
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 14),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      eventName,
-                                      style: const TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  ElevatedButton(
-                                    onPressed: () => _bulkApproveEvent(eventName),
-                                    child: Text('Approve All for $eventName'),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              ...items.map((row) => Container(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      border: Border.all(color: const Color(0xFFE2E6F0)),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Student Request ID: ${row['id']}'),
-                                        Text('Venue: ${row['venue'] ?? '—'}'),
-                                        Text('Date/Time: ${row['datetime'] ?? '—'}'),
-                                        Text('Reason: ${row['reason'] ?? '—'}'),
-                                        const SizedBox(height: 8),
-                                        Row(
-                                          children: [
-                                            FilledButton(
-                                              onPressed: () => _approveOne(row),
-                                              child: const Text('Approve'),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            OutlinedButton(
-                                              onPressed: () => _rejectOne(row),
-                                              child: const Text('Reject'),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  )),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
+      key: _scaffoldKey,
+      backgroundColor: kPrincipalBg,
+      drawer: desktop
+          ? null
+          : Drawer(child: _Sidebar(current: _section, onTap: _onTapSection)),
+      body: SafeArea(
+        child: Row(
+          children: [
+            if (desktop)
+              SizedBox(
+                width: 260,
+                child: _Sidebar(current: _section, onTap: _onTapSection),
+              ),
+            Expanded(
+              child: Column(
+                children: [
+                  _Topbar(
+                    title: _titleForSection(_section),
+                    isDesktop: desktop,
+                    onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
+                    onToggleTheme: ThemeController.toggle,
+                    onLogout: _logout,
                   ),
-                ),
+                  Expanded(
+                    child: _loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _error != null
+                            ? _ErrorPanel(error: _error!, onRetry: _loadQueue)
+                            : RefreshIndicator(
+                                onRefresh: _loadQueue,
+                                child: SingleChildScrollView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                                  child: _contentBySection(),
+                                ),
+                              ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
+
+  void _onTapSection(int index) {
+    setState(() => _section = index);
+    Navigator.of(context).maybePop();
+  }
+
+  String _titleForSection(int section) {
+    switch (section) {
+      case 2:
+        return 'Settings';
+      case 0:
+        return 'Dashboard';
+      default:
+        return 'OD Requests';
+    }
+  }
+
+  Widget _contentBySection() {
+    switch (_section) {
+      case 0:
+        return _DashboardPanel(queue: _queue);
+      case 2:
+        return _SettingsPanel(onLogout: _logout);
+      default:
+        return _ODRequestsPanel(
+          rows: _queue,
+          onApprove: _approve,
+          onReject: _reject,
+          onBulkApproveSameEvent: _bulkApproveSameEvent,
+        );
+    }
+  }
+}
+
+class _Sidebar extends StatelessWidget {
+  const _Sidebar({required this.current, required this.onTap});
+
+  final int current;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = AuthStore.fullName ?? 'Principal';
+    final dept = AuthStore.userDepartment ?? 'Department';
+
+    return Container(
+      color: kPrincipalSidebar,
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Icon(Icons.auto_graph_rounded, color: Colors.white),
+                SizedBox(width: 10),
+                Text(
+                  'Principal Panel',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.09),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.white,
+                  foregroundColor: kPrincipalSidebar,
+                  child: Text(name.substring(0, 1).toUpperCase()),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        dept,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFC3D6FA),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SidebarItem(
+            icon: Icons.dashboard_rounded,
+            label: 'Dashboard',
+            active: current == 0,
+            onTap: () => onTap(0),
+          ),
+          _SidebarItem(
+            icon: Icons.event_note_rounded,
+            label: 'OD Requests',
+            active: current == 1,
+            onTap: () => onTap(1),
+          ),
+          _SidebarItem(
+            icon: Icons.settings_rounded,
+            label: 'Settings',
+            active: current == 2,
+            onTap: () => onTap(2),
+          ),
+          const Spacer(),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'OD Management 2026',
+              style: TextStyle(color: Color(0xFF95B4E7), fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SidebarItem extends StatelessWidget {
+  const _SidebarItem({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      child: Material(
+        color: active ? Colors.white.withValues(alpha: 0.16) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(icon, color: Colors.white),
+                const SizedBox(width: 12),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Topbar extends StatelessWidget {
+  const _Topbar({
+    required this.title,
+    required this.isDesktop,
+    required this.onMenuTap,
+    required this.onToggleTheme,
+    required this.onLogout,
+  });
+
+  final String title;
+  final bool isDesktop;
+  final VoidCallback onMenuTap;
+  final VoidCallback onToggleTheme;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = AuthStore.fullName ?? 'Principal';
+
+    return Container(
+      height: 72,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE3E8F2))),
+      ),
+      child: Row(
+        children: [
+          if (!isDesktop)
+            IconButton(onPressed: onMenuTap, icon: const Icon(Icons.menu)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+          ),
+          const Spacer(),
+          IconButton(
+            onPressed: onToggleTheme,
+            icon: const Icon(Icons.brightness_6_outlined),
+          ),
+          IconButton(
+            onPressed: onLogout,
+            icon: const Icon(Icons.logout_rounded),
+          ),
+          CircleAvatar(
+            backgroundColor: kPrincipalPrimary.withValues(alpha: 0.1),
+            foregroundColor: kPrincipalPrimary,
+            child: Text(name.substring(0, 1).toUpperCase()),
+          ),
+          if (isDesktop) ...[
+            const SizedBox(width: 8),
+            Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardPanel extends StatelessWidget {
+  const _DashboardPanel({required this.queue});
+
+  final List<Map<String, dynamic>> queue;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = queue.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: [
+            _StatCard(
+              label: 'Pending Reviews',
+              value: pending.toString(),
+              icon: Icons.pending_actions_rounded,
+              color: kPrincipalPrimary,
+            ),
+            _StatCard(
+              label: 'Approved Today',
+              value: '—',
+              icon: Icons.check_circle_rounded,
+              color: kPrincipalAccent,
+            ),
+            _StatCard(
+              label: 'Rejected Today',
+              value: '—',
+              icon: Icons.cancel_rounded,
+              color: const Color(0xFFC62828),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE6ECF5)),
+          ),
+          child: const Text(
+            'Open OD Requests for full request details, proof verification, and approval actions.',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 220,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE6ECF5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(height: 12),
+            Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 2),
+            Text(label, style: const TextStyle(color: Color(0xFF60708A))),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ODRequestsPanel extends StatelessWidget {
+  const _ODRequestsPanel({
+    required this.rows,
+    required this.onApprove,
+    required this.onReject,
+    required this.onBulkApproveSameEvent,
+  });
+
+  final List<Map<String, dynamic>> rows;
+  final ValueChanged<Map<String, dynamic>> onApprove;
+  final ValueChanged<Map<String, dynamic>> onReject;
+  final ValueChanged<String> onBulkApproveSameEvent;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) {
+      return const _EmptyState(
+        icon: Icons.inbox_outlined,
+        title: 'No pending requests',
+        subtitle: 'All caught up for now.',
+      );
+    }
+
+    return Column(
+      children: rows
+          .map(
+            (row) => _ODRequestCard(
+              row: row,
+              onApprove: () => onApprove(row),
+              onReject: () => onReject(row),
+              onBulkApproveSameEvent: () {
+                final event = row['event_name']?.toString() ?? '';
+                onBulkApproveSameEvent(event);
+              },
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _ODRequestCard extends StatelessWidget {
+  const _ODRequestCard({
+    required this.row,
+    required this.onApprove,
+    required this.onReject,
+    required this.onBulkApproveSameEvent,
+  });
+
+  final Map<String, dynamic> row;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+  final VoidCallback onBulkApproveSameEvent;
+
+  static bool _looksLikeImageUrl(String value) {
+    final lower = value.toLowerCase();
+    return lower.endsWith('.png') ||
+        lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.gif');
+  }
+
+  static bool _looksLikePdfUrl(String value) {
+    return value.toLowerCase().endsWith('.pdf');
+  }
+
+  Widget _buildFilePreview(BuildContext context, String url) {
+    if (url.isEmpty) {
+      return const Text('No file uploaded');
+    }
+
+    final fullUrl = getFullUrl(url);
+    final lower = url.toLowerCase();
+
+    if (_looksLikeImageUrl(lower)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          fullUrl,
+          height: 180,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => const Text('Image load failed'),
+        ),
+      );
+    }
+
+    if (_looksLikePdfUrl(lower)) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFE3E8F2)),
+          borderRadius: BorderRadius.circular(12),
+          color: const Color(0xFFFAFCFF),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.picture_as_pdf, color: Colors.red),
+            const SizedBox(width: 10),
+            const Expanded(child: Text('View PDF')),
+            IconButton(
+              icon: const Icon(Icons.open_in_new),
+              onPressed: () {
+                final uri = Uri.tryParse(fullUrl);
+                if (uri != null) {
+                  launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+            ),
+          ],
+        ),
+      );
+    }
+
+    return InkWell(
+      onTap: () async {
+        final uri = Uri.tryParse(fullUrl);
+        if (uri != null) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      },
+      child: Text(
+        fullUrl,
+        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  Widget _buildLegacyPreview() {
+    final b64 = row['attachment_base64']?.toString() ?? '';
+    final mime = row['attachment_mime']?.toString() ?? '';
+
+    if (b64.isEmpty || mime.isEmpty) {
+      return const Text('No file uploaded');
+    }
+
+    if (mime.startsWith('image/')) {
+      try {
+        final bytes = base64Decode(b64);
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.memory(bytes, height: 180, width: double.infinity, fit: BoxFit.cover),
+        );
+      } catch (_) {
+        return const Text('Image load failed');
+      }
+    }
+
+    if (mime == 'application/pdf') {
+      return const Text('PDF proof attached (upload URL required).');
+    }
+
+    return const Text('Unsupported proof format.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final eventName = row['event_name']?.toString() ?? 'Untitled event';
+    final datetime = row['datetime']?.toString() ?? '---';
+    final venue = row['venue']?.toString() ?? '---';
+    final organizer = row['organizer']?.toString() ?? row['organiser']?.toString() ?? '---';
+    final reason = row['reason']?.toString() ?? '---';
+    final fileUrl = row['file_url']?.toString() ?? '';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            eventName,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text('Date & Time: $datetime'),
+          Text('Venue: $venue'),
+          Text('Organizer: $organizer'),
+          const SizedBox(height: 10),
+          Text('Reason: $reason'),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE3E8F2)),
+              color: const Color(0xFFFAFCFF),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Proof',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                fileUrl.isNotEmpty ? _buildFilePreview(context, fileUrl) : _buildLegacyPreview(),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                      onPressed: onApprove,
+                      child: const Text('Approve'),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      onPressed: onReject,
+                      child: const Text('Reject'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: onBulkApproveSameEvent,
+                    child: const Text('Approve All Same Event'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsPanel extends StatelessWidget {
+  const _SettingsPanel({required this.onLogout});
+
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = AuthStore.fullName ?? 'Principal';
+    final dept = AuthStore.userDepartment ?? 'Department';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6ECF5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Profile',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 14),
+          _settingRow('Name', name),
+          _settingRow('Role', 'Principal'),
+          _settingRow('Department', dept),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: onLogout,
+            icon: const Icon(Icons.logout, color: Colors.red),
+            label: const Text('Logout', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _settingRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(color: Color(0xFF66768F)),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorPanel extends StatelessWidget {
+  const _ErrorPanel({required this.error, required this.onRetry});
+
+  final String error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red),
+            const SizedBox(height: 8),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.red),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6ECF5)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 58, color: const Color(0xFF9AAAC4)),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFF66768F)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<String?> _askReason(
+  BuildContext context, {
+  required String title,
+  required String label,
+  bool allowEmpty = false,
+}) async {
+  final controller = TextEditingController();
+  return showDialog<String>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          decoration: InputDecoration(
+            labelText: label,
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (!allowEmpty && controller.text.trim().isEmpty) return;
+              Navigator.pop(context, controller.text.trim());
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      );
+    },
+  );
 }

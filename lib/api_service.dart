@@ -17,6 +17,16 @@ const String kBaseUrl = String.fromEnvironment(
   defaultValue: baseUrl,
 );
 
+/// Backend may return file paths like `/uploads/filename.ext`.
+/// Convert them into absolute URLs usable by Flutter widgets.
+String getFullUrl(String path) {
+  final trimmed = path.trim();
+  if (trimmed.isEmpty) return '';
+  final uri = Uri.tryParse(trimmed);
+  if (uri != null && uri.hasScheme) return trimmed;
+  return Uri.parse(kBaseUrl).resolve(trimmed).toString();
+}
+
 // Enable with `--dart-define=USE_MOCK=true` when you want in-memory demo data.
 const bool kUseMockApi = bool.fromEnvironment(
   'USE_MOCK',
@@ -335,9 +345,9 @@ class OdApi {
               'datetime': datetime,
               'reason': reason,
               if (fileUrl != null && fileUrl.trim().isNotEmpty) 'file_url': fileUrl,
-              if (attachmentBase64 != null) 'attachment_base64': attachmentBase64,
-              if (attachmentMime != null) 'attachment_mime': attachmentMime,
-              if (attachmentName != null) 'attachment_name': attachmentName,
+              'attachment_base64': ?attachmentBase64,
+              'attachment_mime': ?attachmentMime,
+              'attachment_name': ?attachmentName,
             }),
           )
           .timeout(const Duration(seconds: 30));

@@ -597,11 +597,13 @@ class _ODRequestCard extends StatelessWidget {
       return const Text('No uploaded proof available.');
     }
 
+    final fullUrl = getFullUrl(fileUrl);
+
     if (_looksLikeImageUrl(fileUrl)) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: Image.network(
-          fileUrl,
+          fullUrl,
           height: 170,
           width: double.infinity,
           fit: BoxFit.cover,
@@ -613,7 +615,7 @@ class _ODRequestCard extends StatelessWidget {
     if (_looksLikePdfUrl(fileUrl)) {
       return InkWell(
         onTap: () async {
-          final uri = Uri.tryParse(fileUrl);
+          final uri = Uri.tryParse(fullUrl);
           if (uri != null) {
             await launchUrl(uri, mode: LaunchMode.externalApplication);
           }
@@ -627,13 +629,13 @@ class _ODRequestCard extends StatelessWidget {
 
     return InkWell(
       onTap: () async {
-        final uri = Uri.tryParse(fileUrl);
+        final uri = Uri.tryParse(fullUrl);
         if (uri != null) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
         }
       },
       child: Text(
-        fileUrl,
+        fullUrl,
         style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600),
       ),
     );
