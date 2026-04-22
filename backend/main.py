@@ -56,6 +56,10 @@ class ApprovalResponse(BaseModel):
     data: dict
 
 
+class BulkApprovePayload(BaseModel):
+    ids: list[str] = Field(default_factory=list)
+
+
 def _serialize(request: ODRequest) -> dict:
     return request.to_dict()
 
@@ -206,21 +210,22 @@ def reject(request_id: str, payload: RejectPayload | None = None, db: Session = 
     raise HTTPException(status_code=404, detail="Request not found")
 
 
-@app.put("/bulk-approve/{event_name}")
-def bulk_approve(event_name: str, db: Session = Depends(get_db)):
+@app.put("/bulk-approve")
+def bulk_approve(payload: BulkApprovePayload, db: Session = Depends(get_db)):
+    if not payload.ids:
+        return {"message": "Bulk approved", "count": 0}
+
     count = 0
-    for request in _query_requests(db):
-        if (
-            request.event_name.lower() == event_name.lower()
-            and request.hod_approved
-            and not request.principal_approved
-            and request.status != "Rejected"
-        ):
-            request.principal_approved = True
+    for request in db.query(ODRequest).filter(ODRequest.id.in_(payload.ids)):
+        if request.status == "Rejected":
+            continue
+        request.principal_approved = True
+        if request.mentor_approved and request.hod_approved:
             request.status = "Approved"
-            count += 1
+        count += 1
+
     db.commit()
-    return {"message": f"{count} requests approved", "count": count}
+    return {"message": "Bulk approved", "count": count}
 
 
 @app.get("/debug")

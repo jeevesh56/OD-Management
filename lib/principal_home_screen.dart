@@ -28,6 +28,7 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   bool _busy = false;
   String? _error;
   List<Map<String, dynamic>> _queue = [];
+  final Set<String> _selectedIds = <String>{};
   Timer? _timer;
 
   List<Map<String, dynamic>> _mapList(dynamic data) {
@@ -80,6 +81,8 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
       if (!silent) _loading = false;
       if (res.ok) {
         _queue = _mapList(res.data);
+        final visibleIds = _queue.map((item) => item['id']?.toString() ?? '').toSet();
+        _selectedIds.removeWhere((id) => !visibleIds.contains(id));
       } else {
         _error = res.error ?? 'Failed to load principal requests';
       }
@@ -122,10 +125,36 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
     await _loadQueue();
   }
 
-  Future<void> _bulkApproveSameEvent(String eventName) async {
-    if (eventName.trim().isEmpty) return;
-    await PrincipalApi.bulkApprove(eventName);
+  Future<void> _bulkApproveSelected() async {
+    if (_selectedIds.isEmpty) return;
+    await PrincipalApi.bulkApprove(_selectedIds.toList());
+    if (!mounted) return;
+    setState(_selectedIds.clear);
     await _loadQueue();
+  }
+
+  Future<void> _bulkApproveGroup(List<Map<String, dynamic>> items) async {
+    final ids = items
+        .map((e) => e['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+    if (ids.isEmpty) return;
+    await PrincipalApi.bulkApprove(ids);
+    if (!mounted) return;
+    setState(() {
+      _selectedIds.removeAll(ids);
+    });
+    await _loadQueue();
+  }
+
+  void _toggleSelected(String requestId, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedIds.add(requestId);
+      } else {
+        _selectedIds.remove(requestId);
+      }
+    });
   }
 
   @override
@@ -204,9 +233,12 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
       default:
         return _ODRequestsPanel(
           rows: _queue,
+          selectedIds: _selectedIds,
+          onToggleSelected: _toggleSelected,
           onApprove: _approve,
           onReject: _reject,
-          onBulkApproveSameEvent: _bulkApproveSameEvent,
+          onBulkApprove: _bulkApproveSelected,
+          onBulkApproveGroup: _bulkApproveGroup,
         );
     }
   }
@@ -528,15 +560,40 @@ class _StatCard extends StatelessWidget {
 class _ODRequestsPanel extends StatelessWidget {
   const _ODRequestsPanel({
     required this.rows,
+    required this.selectedIds,
+    required this.onToggleSelected,
     required this.onApprove,
     required this.onReject,
-    required this.onBulkApproveSameEvent,
+    required this.onBulkApprove,
+    required this.onBulkApproveGroup,
   });
 
   final List<Map<String, dynamic>> rows;
+  final Set<String> selectedIds;
+  final void Function(String requestId, bool selected) onToggleSelected;
   final ValueChanged<Map<String, dynamic>> onApprove;
   final ValueChanged<Map<String, dynamic>> onReject;
-  final ValueChanged<String> onBulkApproveSameEvent;
+  final VoidCallback onBulkApprove;
+  final ValueChanged<List<Map<String, dynamic>>> onBulkApproveGroup;
+
+  Map<String, List<Map<String, dynamic>>> _groupByEvent(List<Map<String, dynamic>> data) {
+    final grouped = <String, List<Map<String, dynamic>>{};
+
+    for (final item in data) {
+      final event = item['event_name']?.toString().trim();
+      final key = (event == null || event.isEmpty) ? 'Unknown' : event;
+      grouped.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(item);
+    }
+
+    final sortedKeys = grouped.keys.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    final sortedMap = <String, List<Map<String, dynamic>>{};
+    for (final key in sortedKeys) {
+      sortedMap[key] = grouped[key]!;
+    }
+    return sortedMap;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -547,21 +604,69 @@ class _ODRequestsPanel extends StatelessWidget {
         subtitle: 'All caught up for now.',
       );
     }
+    final groupedData = _groupByEvent(rows);
 
     return Column(
-      children: rows
-          .map(
-            (row) => _ODRequestCard(
-              row: row,
-              onApprove: () => onApprove(row),
-              onReject: () => onReject(row),
-              onBulkApproveSameEvent: () {
-                final event = row['event_name']?.toString() ?? '';
-                onBulkApproveSameEvent(event);
-              },
-            ),
-          )
-          .toList(),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: selectedIds.isEmpty ? null : onBulkApprove,
+            child: Text('Approve Selected (${selectedIds.length})'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...groupedData.entries.map(
+          (entry) {
+            final eventName = entry.key;
+            final items = entry.value;
+            return Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          eventName,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => onBulkApproveGroup(items),
+                        child: const Text('Approve All'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ...items.map(
+                    (row) => _ODRequestCard(
+                      row: row,
+                      selected: selectedIds.contains(row['id']?.toString() ?? ''),
+                      onToggleSelected: (checked) {
+                        final id = row['id']?.toString() ?? '';
+                        if (id.isEmpty) return;
+                        onToggleSelected(id, checked);
+                      },
+                      onApprove: () => onApprove(row),
+                      onReject: () => onReject(row),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -569,15 +674,17 @@ class _ODRequestsPanel extends StatelessWidget {
 class _ODRequestCard extends StatelessWidget {
   const _ODRequestCard({
     required this.row,
+    required this.selected,
+    required this.onToggleSelected,
     required this.onApprove,
     required this.onReject,
-    required this.onBulkApproveSameEvent,
   });
 
   final Map<String, dynamic> row;
+  final bool selected;
+  final ValueChanged<bool> onToggleSelected;
   final VoidCallback onApprove;
   final VoidCallback onReject;
-  final VoidCallback onBulkApproveSameEvent;
 
   static bool _looksLikeImageUrl(String value) {
     final lower = value.toLowerCase();
@@ -701,9 +808,19 @@ class _ODRequestCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            eventName,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              Checkbox(
+                value: selected,
+                onChanged: (value) => onToggleSelected(value ?? false),
+              ),
+              Expanded(
+                child: Text(
+                  eventName,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text('Date & Time: $datetime'),
@@ -755,14 +872,6 @@ class _ODRequestCard extends StatelessWidget {
                       child: const Text('Reject'),
                     ),
                   ],
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: onBulkApproveSameEvent,
-                    child: const Text('Approve All Same Event'),
-                  ),
                 ),
               ],
             ),

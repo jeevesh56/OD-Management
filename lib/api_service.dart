@@ -718,12 +718,20 @@ class PrincipalApi {
     }
   }
 
-  static Future<ApiResult<Map>> bulkApprove(String eventName) async {
+  static Future<ApiResult<Map>> bulkApprove(List<String> ids) async {
+    if (ids.isEmpty) {
+      return ApiResult.success({'message': 'Bulk approved', 'count': 0});
+    }
+
     if (kUseMockApi) {
       var count = 0;
+      final selected = ids.toSet();
       for (final r in MockOdStore.items) {
-        final sameEvent = (r['event_name']?.toString().toLowerCase() ?? '') == eventName.toLowerCase();
-        if (sameEvent && r['hod_approved'] == true && r['principal_approved'] != true && r['status'] != 'Rejected') {
+        final requestId = r['id']?.toString() ?? '';
+        if (selected.contains(requestId) &&
+            r['hod_approved'] == true &&
+            r['principal_approved'] != true &&
+            r['status'] != 'Rejected') {
           r['principal_approved'] = true;
           r['status'] = 'Approved';
           count++;
@@ -734,13 +742,17 @@ class PrincipalApi {
 
     try {
       final res = await http
-          .put(Uri.parse('$kBaseUrl/bulk-approve/${Uri.encodeComponent(eventName)}'), headers: AuthStore.headers)
+          .put(
+            Uri.parse('$kBaseUrl/bulk-approve'),
+            headers: AuthStore.headers,
+            body: jsonEncode({'ids': ids}),
+          )
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
       if (res.statusCode == 200) return ApiResult.success(body);
       return ApiResult.fail(_errorFromBody(body, 'Bulk approve failed'));
     } catch (e) {
-      _logApiError('PUT /bulk-approve/{event_name}', e);
+      _logApiError('PUT /bulk-approve', e);
       return ApiResult.fail('Backend unavailable. Principal bulk approve failed.');
     }
   }
