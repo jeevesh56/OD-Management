@@ -8,12 +8,13 @@ const Color kBlue = Color(0xFF1565C0);
 const Color kRed = Color(0xFFB71C1C);
 
 // ── Change this to your Flask server IP ──────────────────────────────────────
-// Chrome (web):        http://localhost:5000
+// Chrome (web):        http://127.0.0.1:5000
 // Android emulator:   http://10.0.2.2:5000
 // Real phone on WiFi: http://192.168.x.x:5000  ← your PC's local IP
+const String baseUrl = "https://your-app.onrender.com";
 const String kBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://localhost:5000',
+  defaultValue: baseUrl,
 );
 
 // Enable with `--dart-define=USE_MOCK=true` when you want in-memory demo data.
@@ -31,6 +32,22 @@ const bool kAllowOfflineFallback = bool.fromEnvironment(
 
 void _logApiError(String endpoint, Object error) {
   debugPrint('[API ERROR] $endpoint -> $error');
+}
+
+void _logApiCall(String message) {
+  debugPrint('[API] $message');
+}
+
+String _errorFromBody(dynamic body, String fallback) {
+  if (body is Map) {
+    final detail = body['detail']?.toString();
+    if (detail != null && detail.isNotEmpty) return detail;
+    final error = body['error']?.toString();
+    if (error != null && error.isNotEmpty) return error;
+    final message = body['message']?.toString();
+    if (message != null && message.isNotEmpty) return message;
+  }
+  return fallback;
 }
 
 // ── Simple in-memory token store (no shared_preferences needed) ──────────────
@@ -113,7 +130,7 @@ class AuthStore {
     };
   }
 
-  /// Simple helpers for mentor / HoD names from the same email textbox.
+  /// Simple helpers for staff names from the same email textbox.
   static void applyMentorLogin(String input) {
     final email = input.trim();
     fullName = email.contains('@') ? roleNameFromEmail(email) : 'Mentor';
@@ -132,13 +149,13 @@ class AuthStore {
     role = 'hod';
   }
 
-  static void applyEcLogin(String input) {
+  static void applyPrincipalLogin(String input) {
     final email = input.trim();
-    fullName = email.contains('@') ? roleNameFromEmail(email) : 'EC';
+    fullName = email.contains('@') ? roleNameFromEmail(email) : 'Principal';
     userDepartment = email.contains('@')
         ? roleDepartmentFromEmail(email)
         : 'Department';
-    role = 'ec';
+    role = 'principal';
   }
 
   static void clear() {
@@ -158,7 +175,7 @@ class AuthStore {
 }
 
 // Simple in-memory store used when kUseMockApi is true. This lets the full
-// OD life cycle (student → mentor → EC → HoD) work without a backend.
+// OD life cycle (student → mentor → HoD → principal) work without a backend.
 class MockOdStore {
   static int _nextId = 1;
   static final List<Map<String, dynamic>> items = [];
@@ -167,10 +184,7 @@ class MockOdStore {
     required String eventName,
     required String organiser,
     required String venue,
-    required String startDate,
-    required String endDate,
-    required String startTime,
-    required String endTime,
+    required String datetime,
     required String reason,
     String? eventId,
     String? attachmentName,
@@ -183,16 +197,16 @@ class MockOdStore {
       'event_name': eventName,
       'organiser': organiser,
       'venue': venue,
-      'start_date': startDate,
-      'end_date': endDate,
-      'start_time': startTime,
-      'end_time': endTime,
+      'datetime': datetime,
       'reason': reason,
       'event_id': eventId,
       'attachment_name': attachmentName,
       'attachment_mime': attachmentMime,
       'attachment_base64': attachmentBase64,
-      'status': 'PENDING',
+      'status': 'Pending',
+      'mentor_approved': false,
+      'hod_approved': false,
+      'principal_approved': false,
       'created_at': DateTime.now().toIso8601String(),
       'student_name': AuthStore.fullName ?? 'Student',
     };
@@ -259,32 +273,34 @@ class AuthApi {
 
 // ── OD REQUESTS ───────────────────────────────────────────────────────────────
 class OdApi {
-  static const List<Map<String, String>> _fallbackEvents = [
-    {
-      'event_id': 'fallback-1',
-      'event_name': 'Department Symposium',
-      'organiser_body': 'CSE Department',
-      'venue': 'Main Auditorium',
-    },
-    {
-      'event_id': 'fallback-2',
-      'event_name': 'Technical Workshop',
-      'organiser_body': 'IEEE Student Chapter',
-      'venue': 'Seminar Hall',
-    },
-  ];
+  static Future<List<dynamic>> fetchRequests() async {
+    if (kUseMockApi) {
+      return List<Map<String, dynamic>>.from(MockOdStore.items);
+    }
+
+    final uri = Uri.parse(
+      '$kBaseUrl/od-requests?ts=${DateTime.now().millisecondsSinceEpoch}',
+    );
+    final res = await http
+        .get(uri, headers: AuthStore.headers)
+        .timeout(const Duration(seconds: 5));
+    final dynamic body = jsonDecode(res.body);
+    if (res.statusCode != 200) {
+      throw Exception(_errorFromBody(body, 'Failed to load requests'));
+    }
+    if (body is List) return body;
+    if (body is Map && body['requests'] is List) return body['requests'] as List;
+    return const [];
+  }
 
   // Submit new OD request
   static Future<ApiResult<Map>> submit({
     required String eventName,
-    required String organiser,
+    required String datetime,
     required String venue,
-    required String startDate, // YYYY-MM-DD
-    required String endDate,
-    required String startTime, // HH:MM
-    required String endTime,
+    required String organizer,
     required String reason,
-    String? eventId,
+    String? fileUrl,
     String? attachmentBase64, // base64 encoded file
     String? attachmentMime, // e.g. application/pdf
     String? attachmentName, // original filename
@@ -292,14 +308,10 @@ class OdApi {
     if (kUseMockApi) {
       final request = MockOdStore.addRequest(
         eventName: eventName,
-        organiser: organiser,
+        organiser: organizer,
         venue: venue,
-        startDate: startDate,
-        endDate: endDate,
-        startTime: startTime,
-        endTime: endTime,
+        datetime: datetime,
         reason: reason,
-        eventId: eventId,
         attachmentName: attachmentName,
         attachmentMime: attachmentMime,
         attachmentBase64: attachmentBase64,
@@ -307,107 +319,75 @@ class OdApi {
       return ApiResult.success(request);
     }
 
+    final hasAttachment =
+      attachmentBase64 != null && attachmentBase64.trim().isNotEmpty;
+
     try {
+      _logApiCall('POST /od-request event="$eventName" venue="$venue" hasFile=$hasAttachment');
       final res = await http
           .post(
-            Uri.parse('$kBaseUrl/api/student/od-requests'),
-            headers: AuthStore.headers,
+            Uri.parse('$kBaseUrl/od-request'),
+            headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'event_name': eventName,
-              'organiser': organiser,
+              'organizer': organizer,
               'venue': venue,
-              'start_date': startDate,
-              'end_date': endDate,
-              'start_time': startTime,
-              'end_time': endTime,
+              'datetime': datetime,
               'reason': reason,
-              if (eventId != null) 'event_id': eventId,
-              if (attachmentBase64 != null)
-                'attachment_base64': attachmentBase64,
+              if (fileUrl != null && fileUrl.trim().isNotEmpty) 'file_url': fileUrl,
+              if (attachmentBase64 != null) 'attachment_base64': attachmentBase64,
               if (attachmentMime != null) 'attachment_mime': attachmentMime,
               if (attachmentName != null) 'attachment_name': attachmentName,
             }),
           )
           .timeout(const Duration(seconds: 30));
 
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 201) return ApiResult.success(body);
-      return ApiResult.fail(body['error'] ?? 'Submission failed');
+      final dynamic decoded = jsonDecode(res.body);
+      final body = decoded is Map<String, dynamic>
+          ? decoded
+          : <String, dynamic>{'data': decoded};
+      _logApiCall('POST /od-request -> ${res.statusCode}');
+      if (res.statusCode == 200 || res.statusCode == 201) return ApiResult.success(body);
+      return ApiResult.fail(_errorFromBody(body, 'Submission failed'));
     } catch (e) {
-      _logApiError('POST /api/student/od-requests', e);
+      _logApiError('POST /od-request', e);
       if (kAllowOfflineFallback) {
         final request = MockOdStore.addRequest(
           eventName: eventName,
-          organiser: organiser,
+          organiser: organizer,
           venue: venue,
-          startDate: startDate,
-          endDate: endDate,
-          startTime: startTime,
-          endTime: endTime,
+          datetime: datetime,
           reason: reason,
-          eventId: eventId,
           attachmentName: attachmentName,
           attachmentMime: attachmentMime,
           attachmentBase64: attachmentBase64,
         );
         return ApiResult.success(request);
       }
-      return ApiResult.fail('Backend unavailable. Request was not saved.');
+      return ApiResult.fail('Backend unavailable. Request was not saved. Check http://127.0.0.1:5000 and server logs.');
     }
   }
 
   static Future<ApiResult<List>> events() async {
-    if (kUseMockApi) {
-      return ApiResult.success(List<Map<String, String>>.from(_fallbackEvents));
-    }
-
     try {
-      final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/events'),
-            headers: AuthStore.headers,
-          )
-          .timeout(const Duration(seconds: 10));
-
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) {
-        final rawEvents = (body['events'] as List?) ?? const [];
-        if (rawEvents.isNotEmpty) {
-          return ApiResult.success(rawEvents);
-        }
-      }
-      // Fall back to local defaults when endpoint exists but has no data.
-      return ApiResult.success(List<Map<String, String>>.from(_fallbackEvents));
+      final items = await fetchRequests();
+      return ApiResult.success(items);
     } catch (e) {
-      _logApiError('GET /api/events', e);
-      // Graceful fallback keeps New OD usable when backend endpoint is down.
-      return ApiResult.success(List<Map<String, String>>.from(_fallbackEvents));
+      _logApiError('GET /od-requests', e);
+      if (kAllowOfflineFallback) {
+        return ApiResult.success(List<Map<String, dynamic>>.from(MockOdStore.items));
+      }
+      return ApiResult.fail('Backend unavailable. Unable to load requests.');
     }
   }
 
   // Get my OD history
   static Future<ApiResult<List>> myRequests() async {
-    if (kUseMockApi) {
-      return ApiResult.success(
-        List<Map<String, dynamic>>.from(MockOdStore.items),
-      );
-    }
-
     try {
-      final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/student/od-requests'),
-            headers: AuthStore.headers,
-          )
-          .timeout(const Duration(seconds: 10));
-
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) {
-        return ApiResult.success(body['requests'] as List);
-      }
-      return ApiResult.fail(body['error'] ?? 'Failed to load');
+      final items = await fetchRequests();
+      return ApiResult.success(items);
     } catch (e) {
-      _logApiError('GET /api/student/od-requests', e);
+      _logApiError('GET /od-requests', e);
       if (kAllowOfflineFallback) {
         return ApiResult.success(
           List<Map<String, dynamic>>.from(MockOdStore.items),
@@ -417,57 +397,58 @@ class OdApi {
     }
   }
 
+  static Future<ApiResult<Map>> resubmitRequest(Map<dynamic, dynamic> item) async {
+    final id = item['id']?.toString() ?? '';
+    if (id.isEmpty) {
+      return ApiResult.fail('Invalid request id for resubmission.');
+    }
+
+    if (kUseMockApi) {
+      final row = MockOdStore.byId(id);
+      if (row == null) return ApiResult.fail('Request not found');
+      row['status'] = 'Pending';
+      return ApiResult.success(row);
+    }
+
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$kBaseUrl/od-request/$id/resubmit'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(item),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      final dynamic decoded = jsonDecode(res.body);
+      final body = decoded is Map<String, dynamic>
+          ? decoded
+          : <String, dynamic>{'data': decoded};
+
+      if (res.statusCode == 200) return ApiResult.success(body);
+      return ApiResult.fail(_errorFromBody(body, 'Resubmit failed'));
+    } catch (e) {
+      _logApiError('PUT /od-request/{id}/resubmit', e);
+      if (kAllowOfflineFallback) {
+        final row = MockOdStore.byId(id);
+        if (row == null) return ApiResult.fail('Request not found');
+        row['status'] = 'Pending';
+        return ApiResult.success(row);
+      }
+      return ApiResult.fail('Backend unavailable. Unable to resubmit request.');
+    }
+  }
+
   // Check date overlap before submitting
   static Future<ApiResult<Map>> checkOverlap({
     required String startDate,
     required String endDate,
   }) async {
-    if (kUseMockApi) {
-      // Very simple mock: never blocks, just says no overlap.
-      return ApiResult.success(<String, dynamic>{'has_overlap': false});
-    }
-
-    try {
-      final res = await http
-          .get(
-            Uri.parse(
-              '$kBaseUrl/api/student/check-overlap'
-              '?start_date=$startDate&end_date=$endDate',
-            ),
-            headers: AuthStore.headers,
-          )
-          .timeout(const Duration(seconds: 10));
-
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(body['error'] ?? 'Check failed');
-    } catch (e) {
-      _logApiError('GET /api/student/check-overlap', e);
-      return ApiResult.success(<String, dynamic>{'has_overlap': false});
-    }
+    return ApiResult.success(<String, dynamic>{'has_overlap': false});
   }
 
   // Active OD session
   static Future<ApiResult<Map>> activeSession() async {
-    if (kUseMockApi) {
-      return ApiResult.success(<String, dynamic>{'has_active_session': false});
-    }
-
-    try {
-      final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/student/active-session'),
-            headers: AuthStore.headers,
-          )
-          .timeout(const Duration(seconds: 10));
-
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(body['error'] ?? 'Failed');
-    } catch (e) {
-      _logApiError('GET /api/student/active-session', e);
-      return ApiResult.success(<String, dynamic>{'has_active_session': false});
-    }
+    return ApiResult.success(<String, dynamic>{'has_active_session': false});
   }
 }
 
@@ -475,33 +456,21 @@ class OdApi {
 class MentorApi {
   static Future<ApiResult<List>> queue() async {
     if (kUseMockApi) {
-      final pending = MockOdStore.items
-          .where((r) => r['status'] == 'PENDING')
-          .toList(growable: false);
-      return ApiResult.success(pending);
+      final items = MockOdStore.items
+          .where((r) => !(r['mentor_approved'] == true) && r['status'] != 'Rejected')
+          .toList();
+      return ApiResult.success(items);
     }
-
     try {
       final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/mentor/queue'),
-            headers: AuthStore.headers,
-          )
+          .get(Uri.parse('$kBaseUrl/od-requests/mentor'), headers: AuthStore.headers)
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
-      if (res.statusCode == 200) {
-        return ApiResult.success(body['queue'] as List);
-      }
-      return ApiResult.fail(body['error'] ?? 'Failed');
+      if (res.statusCode == 200) return ApiResult.success(body as List);
+      return ApiResult.fail(_errorFromBody(body, 'Failed to load mentor queue'));
     } catch (e) {
-      _logApiError('GET /api/mentor/queue', e);
-      if (kAllowOfflineFallback) {
-        final pending = MockOdStore.items
-            .where((r) => r['status'] == 'PENDING')
-            .toList(growable: false);
-        return ApiResult.success(pending);
-      }
-      return ApiResult.fail('Backend unavailable. Unable to load mentor queue.');
+      _logApiError('GET /od-requests/mentor', e);
+      return ApiResult.success(MockOdStore.items);
     }
   }
 
@@ -517,39 +486,41 @@ class MentorApi {
         return ApiResult.fail('Request not found');
       }
       r['mentor_comment'] = comment ?? reason;
-      r['status'] = action == 'APPROVED'
-          ? 'MENTOR_APPROVED'
-          : 'MENTOR_REJECTED';
+      if (action == 'APPROVED') {
+        r['mentor_approved'] = true;
+      } else {
+        r['status'] = 'Rejected';
+      }
       return ApiResult.success(r);
     }
 
     try {
+      final endpoint = action == 'APPROVED'
+          ? '$kBaseUrl/od-request/$requestId/approve/mentor'
+          : '$kBaseUrl/od-request/$requestId/reject';
       final res = await http
-          .post(
-            Uri.parse('$kBaseUrl/api/mentor/action'),
+          .put(
+            Uri.parse(endpoint),
             headers: AuthStore.headers,
-            body: jsonEncode({
-              'request_id': requestId,
-              'action': action,
-              'reason': reason,
-              'comment': comment,
-            }),
+            body: action == 'APPROVED' ? null : jsonEncode({'reason': reason ?? ''}),
           )
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
       if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(body['error'] ?? 'Action failed');
+      return ApiResult.fail(_errorFromBody(body, 'Action failed'));
     } catch (e) {
-      _logApiError('POST /api/mentor/action', e);
+      _logApiError('PUT /od-request/{id}/approve|reject', e);
       if (kAllowOfflineFallback) {
         final r = MockOdStore.byId(requestId);
         if (r == null) {
           return ApiResult.fail('Request not found');
         }
         r['mentor_comment'] = comment ?? reason;
-        r['status'] = action == 'APPROVED'
-            ? 'MENTOR_APPROVED'
-            : 'MENTOR_REJECTED';
+        if (action == 'APPROVED') {
+          r['mentor_approved'] = true;
+        } else {
+          r['status'] = 'Rejected';
+        }
         return ApiResult.success(r);
       }
       return ApiResult.fail('Backend unavailable. Mentor action not saved.');
@@ -557,114 +528,11 @@ class MentorApi {
   }
 
   static Future<ApiResult<List>> history() async {
-    if (kUseMockApi) {
-      final items = MockOdStore.items
-          .where((r) {
-            final s = r['status']?.toString() ?? '';
-            return s == 'MENTOR_APPROVED' || s == 'MENTOR_REJECTED';
-          })
-          .toList(growable: false);
-      return ApiResult.success(items);
-    }
     try {
-      final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/mentor/history'),
-            headers: AuthStore.headers,
-          )
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) {
-        return ApiResult.success(body['items'] as List? ?? []);
-      }
-      return ApiResult.fail(body['error'] ?? 'Failed');
+      return ApiResult.success(await OdApi.fetchRequests());
     } catch (e) {
-      _logApiError('GET /api/mentor/history', e);
-      if (kAllowOfflineFallback) {
-        final items = MockOdStore.items
-            .where((r) {
-              final s = r['status']?.toString() ?? '';
-              return s == 'MENTOR_APPROVED' || s == 'MENTOR_REJECTED';
-            })
-            .toList(growable: false);
-        return ApiResult.success(items);
-      }
-      return ApiResult.fail('Backend unavailable. Unable to load mentor history.');
-    }
-  }
-}
-
-// ── EC ────────────────────────────────────────────────────────────────────────
-class ECApi {
-  static Future<ApiResult<List>> queue() async {
-    if (kUseMockApi) {
-      final pending = MockOdStore.items
-          .where((r) => r['status'] == 'MENTOR_APPROVED')
-          .toList(growable: false);
-      return ApiResult.success(pending);
-    }
-    try {
-      final res = await http
-          .get(Uri.parse('$kBaseUrl/api/ec/queue'), headers: AuthStore.headers)
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) {
-        return ApiResult.success(body['queue'] as List);
-      }
-      return ApiResult.fail(body['error'] ?? 'Failed');
-    } catch (e) {
-      _logApiError('GET /api/ec/queue', e);
-      if (kAllowOfflineFallback) {
-        final pending = MockOdStore.items
-            .where((r) => r['status'] == 'MENTOR_APPROVED')
-            .toList(growable: false);
-        return ApiResult.success(pending);
-      }
-      return ApiResult.fail('Backend unavailable. Unable to load EC queue.');
-    }
-  }
-
-  static Future<ApiResult<Map>> action({
-    required String requestId,
-    required String action, // CONFIRMED | REJECTED
-    String? reason,
-  }) async {
-    if (kUseMockApi) {
-      final r = MockOdStore.byId(requestId);
-      if (r == null) {
-        return ApiResult.fail('Request not found');
-      }
-      r['ec_comment'] = reason;
-      r['status'] = action == 'CONFIRMED' ? 'EC_CONFIRMED' : 'EC_REJECTED';
-      return ApiResult.success(r);
-    }
-    try {
-      final res = await http
-          .post(
-            Uri.parse('$kBaseUrl/api/ec/action'),
-            headers: AuthStore.headers,
-            body: jsonEncode({
-              'request_id': requestId,
-              'action': action,
-              'reason': reason,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(body['error'] ?? 'Action failed');
-    } catch (e) {
-      _logApiError('POST /api/ec/action', e);
-      if (kAllowOfflineFallback) {
-        final r = MockOdStore.byId(requestId);
-        if (r == null) {
-          return ApiResult.fail('Request not found');
-        }
-        r['ec_comment'] = reason;
-        r['status'] = action == 'CONFIRMED' ? 'EC_CONFIRMED' : 'EC_REJECTED';
-        return ApiResult.success(r);
-      }
-      return ApiResult.fail('Backend unavailable. EC action not saved.');
+      _logApiError('GET /od-requests', e);
+      return ApiResult.success(MockOdStore.items);
     }
   }
 }
@@ -673,36 +541,21 @@ class ECApi {
 class HoDApi {
   static Future<ApiResult<List>> queue() async {
     if (kUseMockApi) {
-      final pending = MockOdStore.items
-          .where((r) {
-            final s = r['status'] as String? ?? '';
-            // In mock mode, HoD sees requests approved by mentor (no EC step).
-            return s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
-          })
-          .toList(growable: false);
-      return ApiResult.success(pending);
+      final items = MockOdStore.items
+          .where((r) => r['mentor_approved'] == true && r['hod_approved'] != true && r['status'] != 'Rejected')
+          .toList();
+      return ApiResult.success(items);
     }
     try {
       final res = await http
-          .get(Uri.parse('$kBaseUrl/api/hod/queue'), headers: AuthStore.headers)
+          .get(Uri.parse('$kBaseUrl/od-requests/hod'), headers: AuthStore.headers)
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
-      if (res.statusCode == 200) {
-        return ApiResult.success(body['queue'] as List);
-      }
-      return ApiResult.fail(body['error'] ?? 'Failed');
+      if (res.statusCode == 200) return ApiResult.success(body as List);
+      return ApiResult.fail(_errorFromBody(body, 'Failed to load HoD queue'));
     } catch (e) {
-      _logApiError('GET /api/hod/queue', e);
-      if (kAllowOfflineFallback) {
-        final pending = MockOdStore.items
-            .where((r) {
-              final s = r['status'] as String? ?? '';
-              return s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
-            })
-            .toList(growable: false);
-        return ApiResult.success(pending);
-      }
-      return ApiResult.fail('Backend unavailable. Unable to load HoD queue.');
+      _logApiError('GET /od-requests/hod', e);
+      return ApiResult.success(MockOdStore.items);
     }
   }
 
@@ -717,33 +570,40 @@ class HoDApi {
         return ApiResult.fail('Request not found');
       }
       r['hod_comment'] = reason;
-      r['status'] = action == 'APPROVED' ? 'HOD_APPROVED' : 'HOD_REJECTED';
+      if (action == 'APPROVED') {
+        r['hod_approved'] = true;
+      } else {
+        r['status'] = 'Rejected';
+      }
       return ApiResult.success(r);
     }
     try {
+      final endpoint = action == 'APPROVED'
+          ? '$kBaseUrl/od-request/$requestId/approve/hod'
+          : '$kBaseUrl/od-request/$requestId/reject';
       final res = await http
-          .post(
-            Uri.parse('$kBaseUrl/api/hod/action'),
+          .put(
+            Uri.parse(endpoint),
             headers: AuthStore.headers,
-            body: jsonEncode({
-              'request_id': requestId,
-              'action': action,
-              'reason': reason,
-            }),
+            body: action == 'APPROVED' ? null : jsonEncode({'reason': reason ?? ''}),
           )
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
       if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(body['error'] ?? 'Action failed');
+      return ApiResult.fail(_errorFromBody(body, 'Action failed'));
     } catch (e) {
-      _logApiError('POST /api/hod/action', e);
+      _logApiError('PUT /od-request/{id}/approve|reject', e);
       if (kAllowOfflineFallback) {
         final r = MockOdStore.byId(requestId);
         if (r == null) {
           return ApiResult.fail('Request not found');
         }
         r['hod_comment'] = reason;
-        r['status'] = action == 'APPROVED' ? 'HOD_APPROVED' : 'HOD_REJECTED';
+        if (action == 'APPROVED') {
+          r['hod_approved'] = true;
+        } else {
+          r['status'] = 'Rejected';
+        }
         return ApiResult.success(r);
       }
       return ApiResult.fail('Backend unavailable. HoD action not saved.');
@@ -751,151 +611,127 @@ class HoDApi {
   }
 
   static Future<ApiResult<Map>> bulkAction(String eventId) async {
-    if (kUseMockApi) {
-      for (final r in MockOdStore.items) {
-        if (r['status'] == 'EC_CONFIRMED') {
-          r['status'] = 'HOD_APPROVED';
-        }
-      }
-      return ApiResult.success({'ok': true});
-    }
-    try {
-      final res = await http
-          .post(
-            Uri.parse('$kBaseUrl/api/hod/bulk-action'),
-            headers: AuthStore.headers,
-            body: jsonEncode({'event_id': eventId, 'action': 'APPROVED'}),
-          )
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(body['error'] ?? 'Bulk action failed');
-    } catch (e) {
-      _logApiError('POST /api/hod/bulk-action', e);
-      if (kAllowOfflineFallback) {
-        for (final r in MockOdStore.items) {
-          if (r['status'] == 'EC_CONFIRMED') {
-            r['status'] = 'HOD_APPROVED';
-          }
-        }
-        return ApiResult.success({'ok': true});
-      }
-      return ApiResult.fail('Backend unavailable. Bulk action not saved.');
-    }
+    return ApiResult.fail('Bulk approval moved to Principal role.');
   }
 
   static Future<ApiResult<Map>> analytics() async {
-    if (kUseMockApi) {
-      final total = MockOdStore.items.length;
-      final approved = MockOdStore.items
-          .where((r) => r['status'] == 'HOD_APPROVED')
-          .length;
-      final pending = MockOdStore.items.where((r) {
-        final s = r['status']?.toString() ?? '';
-        return s == 'PENDING' || s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
-      }).length;
-      final rejected = MockOdStore.items.where((r) {
-        final s = r['status']?.toString() ?? '';
-        return s.contains('REJECTED') || s == 'CANCELLED';
-      }).length;
-      final activeNow = 0;
-      return ApiResult.success({
-        'total': total,
-        'approved': approved,
-        'pending': pending,
-        'rejected': rejected,
-        'active_now': activeNow,
-      });
+    final itemsRes = await OdApi.fetchRequests();
+    final total = itemsRes.length;
+    var approved = 0;
+    var rejected = 0;
+    for (final item in itemsRes) {
+      final row = item as Map;
+      final status = row['status']?.toString() ?? '';
+      if (status == 'Approved') approved++;
+      if (status == 'Rejected') rejected++;
     }
-    try {
-      final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/hod/analytics'),
-            headers: AuthStore.headers,
-          )
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(body['error'] ?? 'Failed');
-    } catch (e) {
-      _logApiError('GET /api/hod/analytics', e);
-      if (kAllowOfflineFallback) {
-        final total = MockOdStore.items.length;
-        final approved = MockOdStore.items
-            .where((r) => r['status'] == 'HOD_APPROVED')
-            .length;
-        final pending = MockOdStore.items.where((r) {
-          final s = r['status']?.toString() ?? '';
-          return s == 'PENDING' || s == 'MENTOR_APPROVED' || s == 'EC_CONFIRMED';
-        }).length;
-        final rejected = MockOdStore.items.where((r) {
-          final s = r['status']?.toString() ?? '';
-          return s.contains('REJECTED') || s == 'CANCELLED';
-        }).length;
-        final activeNow = 0;
-        return ApiResult.success({
-          'total': total,
-          'approved': approved,
-          'pending': pending,
-          'rejected': rejected,
-          'active_now': activeNow,
-        });
-      }
-      return ApiResult.fail('Backend unavailable. Unable to load analytics.');
-    }
+    return ApiResult.success({
+      'total': total,
+      'approved': approved,
+      'pending': total - approved - rejected,
+      'rejected': rejected,
+      'active_now': 0,
+    });
   }
 
   static Future<ApiResult<List>> history() async {
-    if (kUseMockApi) {
-      final items = MockOdStore.items
-          .where((r) {
-            final s = r['status']?.toString() ?? '';
-            return s == 'HOD_APPROVED' || s == 'HOD_REJECTED';
-          })
-          .toList(growable: false);
-      return ApiResult.success(items);
-    }
     try {
-      final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/hod/history'),
-            headers: AuthStore.headers,
-          )
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) {
-        return ApiResult.success(body['items'] as List? ?? []);
-      }
-      return ApiResult.fail(body['error'] ?? 'Failed');
+      return ApiResult.success(await OdApi.fetchRequests());
     } catch (e) {
-      final items = MockOdStore.items
-          .where((r) {
-            final s = r['status']?.toString() ?? '';
-            return s == 'HOD_APPROVED' || s == 'HOD_REJECTED';
-          })
-          .toList(growable: false);
-      return ApiResult.success(items);
+      return ApiResult.success(MockOdStore.items);
     }
   }
 
   static Future<ApiResult<List>> activeSessions() async {
+    return ApiResult.success(const []);
+  }
+}
+
+// ── PRINCIPAL ────────────────────────────────────────────────────────────────
+class PrincipalApi {
+  static Future<ApiResult<List>> queue() async {
     if (kUseMockApi) {
-      return ApiResult.success(const []);
+      final items = MockOdStore.items
+          .where((r) => r['hod_approved'] == true && r['principal_approved'] != true && r['status'] != 'Rejected')
+          .toList();
+      return ApiResult.success(items);
     }
+
     try {
       final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/hod/active-sessions'),
+          .get(Uri.parse('$kBaseUrl/od-requests/principal'), headers: AuthStore.headers)
+          .timeout(const Duration(seconds: 10));
+      final body = jsonDecode(res.body);
+      if (res.statusCode == 200) return ApiResult.success(body as List);
+      return ApiResult.fail(_errorFromBody(body, 'Failed to load principal queue'));
+    } catch (e) {
+      _logApiError('GET /od-requests/principal', e);
+      return ApiResult.success(MockOdStore.items);
+    }
+  }
+
+  static Future<ApiResult<Map>> action({
+    required String requestId,
+    required String action,
+    String? reason,
+  }) async {
+    if (kUseMockApi) {
+      final r = MockOdStore.byId(requestId);
+      if (r == null) return ApiResult.fail('Request not found');
+      r['principal_comment'] = reason;
+      if (action == 'APPROVED') {
+        r['principal_approved'] = true;
+        r['status'] = 'Approved';
+      } else {
+        r['status'] = 'Rejected';
+      }
+      return ApiResult.success(r);
+    }
+
+    try {
+      final endpoint = action == 'APPROVED'
+          ? '$kBaseUrl/od-request/$requestId/approve/principal'
+          : '$kBaseUrl/od-request/$requestId/reject';
+      final res = await http
+          .put(
+            Uri.parse(endpoint),
             headers: AuthStore.headers,
+            body: action == 'APPROVED' ? null : jsonEncode({'reason': reason ?? ''}),
           )
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
-      if (res.statusCode == 200) {
-        return ApiResult.success(body['sessions'] as List? ?? []);
-      }
-      return ApiResult.fail(body['error'] ?? 'Failed');
+      if (res.statusCode == 200) return ApiResult.success(body);
+      return ApiResult.fail(_errorFromBody(body, 'Action failed'));
     } catch (e) {
-      return ApiResult.success(const []);
+      _logApiError('PUT /od-request/{id}/approve/principal|reject', e);
+      return ApiResult.fail('Backend unavailable. Principal action not saved.');
+    }
+  }
+
+  static Future<ApiResult<Map>> bulkApprove(String eventName) async {
+    if (kUseMockApi) {
+      var count = 0;
+      for (final r in MockOdStore.items) {
+        final sameEvent = (r['event_name']?.toString().toLowerCase() ?? '') == eventName.toLowerCase();
+        if (sameEvent && r['hod_approved'] == true && r['principal_approved'] != true && r['status'] != 'Rejected') {
+          r['principal_approved'] = true;
+          r['status'] = 'Approved';
+          count++;
+        }
+      }
+      return ApiResult.success({'message': '$count requests approved', 'count': count});
+    }
+
+    try {
+      final res = await http
+          .put(Uri.parse('$kBaseUrl/bulk-approve/${Uri.encodeComponent(eventName)}'), headers: AuthStore.headers)
+          .timeout(const Duration(seconds: 10));
+      final body = jsonDecode(res.body);
+      if (res.statusCode == 200) return ApiResult.success(body);
+      return ApiResult.fail(_errorFromBody(body, 'Bulk approve failed'));
+    } catch (e) {
+      _logApiError('PUT /bulk-approve/{event_name}', e);
+      return ApiResult.fail('Backend unavailable. Principal bulk approve failed.');
     }
   }
 }
@@ -912,7 +748,7 @@ class VerifyApi {
           .timeout(const Duration(seconds: 10));
       final body = jsonDecode(res.body);
       if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(body['error'] ?? 'Scan failed');
+      return ApiResult.fail(_errorFromBody(body, 'Scan failed'));
     } catch (e) {
       if (kUseMockApi) {
         return ApiResult.fail('Invalid QR (mock mode) or offline');

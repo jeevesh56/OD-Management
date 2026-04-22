@@ -1,0 +1,7 @@
+.venv/
+.venv312/
+__pycache__/
+*.pyc
+od_management.db
+uploads/*
+!uploads/.gitkeep

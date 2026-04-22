@@ -11,18 +11,19 @@ String portalOdDateLabel(dynamic start, dynamic end) {
 String portalOdStatusLabel(String status) {
   switch (status) {
     case 'PENDING':
+    case 'Pending':
       return 'Pending';
     case 'MENTOR_APPROVED':
       return 'Mentor approved';
     case 'MENTOR_REJECTED':
       return 'Mentor rejected';
-    case 'EC_CONFIRMED':
-      return 'EC confirmed';
-    case 'EC_REJECTED':
-      return 'EC rejected';
     case 'HOD_APPROVED':
+      return 'HoD approved';
+    case 'PRINCIPAL_APPROVED':
+    case 'Approved':
       return 'Approved';
     case 'HOD_REJECTED':
+    case 'Rejected':
       return 'HoD rejected';
     case 'CANCELLED':
       return 'Cancelled';
@@ -33,21 +34,24 @@ String portalOdStatusLabel(String status) {
 
 String portalOdBadgeLabel(String status) {
   if (status == 'MENTOR_APPROVED') return 'Mentor OK';
+  if (status == 'HOD_APPROVED') return 'HoD OK';
   return portalOdStatusLabel(status);
 }
 
 Color portalOdStatusColor(String status) {
   switch (status) {
-    case 'HOD_APPROVED':
+    case 'PRINCIPAL_APPROVED':
+    case 'Approved':
       return Colors.green;
     case 'MENTOR_REJECTED':
-    case 'EC_REJECTED':
     case 'HOD_REJECTED':
+    case 'Rejected':
       return Colors.red;
     case 'PENDING':
+    case 'Pending':
       return Colors.orange;
     case 'MENTOR_APPROVED':
-    case 'EC_CONFIRMED':
+    case 'HOD_APPROVED':
       return Colors.indigo;
     default:
       return Colors.grey;

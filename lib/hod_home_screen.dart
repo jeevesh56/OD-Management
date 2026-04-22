@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -28,24 +29,46 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
   List<Map<String, dynamic>> _requests = [];
   List<Map<String, dynamic>> _sessions = [];
   Map<String, dynamic> _analytics = const {};
+  Timer? _autoRefreshTimer;
+
+  List<Map<String, dynamic>> _mapList(dynamic data) {
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
 
   @override
   void initState() {
     super.initState();
     _loadAll();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted && !_busy) {
+        _loadAll(silent: true);
+      }
+    });
   }
 
-  Future<void> _loadAll() async {
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadAll({bool silent = false}) async {
     if (_busy) return;
     _busy = true;
     if (!mounted) {
       _busy = false;
       return;
     }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     final results = await Future.wait([
       HoDApi.queue(),
@@ -62,11 +85,11 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
     final sessionsRes = results[2] as ApiResult<dynamic>;
 
     setState(() {
-      _loading = false;
+      if (!silent) {
+        _loading = false;
+      }
       if (queueRes.ok) {
-        _requests = (queueRes.data is List ? queueRes.data : const [])
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
+        _requests = _mapList(queueRes.data);
       } else {
         _error = queueRes.error;
       }
@@ -76,9 +99,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
       }
 
       if (sessionsRes.ok) {
-        _sessions = (sessionsRes.data is List ? sessionsRes.data : const [])
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
+        _sessions = _mapList(sessionsRes.data);
       }
     });
     _busy = false;
@@ -91,11 +112,6 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
       context,
       MaterialPageRoute(builder: (_) => const ODLoginUI()),
     );
-  }
-
-  Future<void> _bulkApprove() async {
-    await HoDApi.bulkAction('all');
-    await _loadAll();
   }
 
   Future<void> _approve(Map<String, dynamic> row) async {
@@ -233,7 +249,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
       case 1:
         return 'Participants';
       case 2:
-        return 'Events';
+        return 'OD Requests';
       case 3:
         return 'Settings';
       default:
@@ -259,7 +275,6 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
           requests: _requests,
           sessions: _sessions,
           analytics: _analytics,
-          onBulkApprove: _bulkApprove,
         );
     }
   }
@@ -364,7 +379,7 @@ class _Sidebar extends StatelessWidget {
           ),
           _SidebarItem(
             icon: Icons.event_note_rounded,
-            label: 'Events',
+              label: 'OD Requests',
             active: current == 2,
             onTap: () => onTap(2),
           ),
@@ -498,19 +513,20 @@ class _DashboardPanel extends StatelessWidget {
     required this.requests,
     required this.sessions,
     required this.analytics,
-    required this.onBulkApprove,
   });
 
   final List<Map<String, dynamic>> requests;
   final List<Map<String, dynamic>> sessions;
   final Map<String, dynamic> analytics;
-  final VoidCallback onBulkApprove;
 
   @override
   Widget build(BuildContext context) {
+    final pendingCount = requests
+        .where((e) => (e['status']?.toString() ?? '') == 'Pending')
+        .length;
     final total = (analytics['total'] ?? requests.length).toString();
     final approved = (analytics['approved'] ?? 0).toString();
-    final pending = (analytics['pending'] ?? requests.length).toString();
+    final pending = (analytics['pending'] ?? pendingCount).toString();
     final rejected = (analytics['rejected'] ?? 0).toString();
     final activeNow = (analytics['active_now'] ?? sessions.length).toString();
 
@@ -566,15 +582,15 @@ class _DashboardPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '${requests.length} participant requests are waiting for a final decision',
+                  '$pendingCount participant requests are waiting for principal approval after HoD sign-off',
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
               FilledButton.icon(
-                onPressed: requests.isEmpty ? null : onBulkApprove,
-                icon: const Icon(Icons.done_all),
+                onPressed: null,
+                icon: const Icon(Icons.admin_panel_settings_rounded),
                 style: FilledButton.styleFrom(backgroundColor: kHoDPrimary),
-                label: const Text('Bulk Approve'),
+                label: const Text('Bulk Approve (Principal)'),
               ),
             ],
           ),
@@ -702,12 +718,10 @@ class _ParticipantsTable extends StatelessWidget {
                   Text(row['event_name']?.toString() ?? 'Untitled event'),
                 ),
                 DataCell(
-                  Text(
-                    '${row['start_date'] ?? '---'} - ${row['end_date'] ?? '---'}',
-                  ),
+                  Text(row['datetime']?.toString() ?? '---'),
                 ),
                 DataCell(Text(row['venue']?.toString() ?? '---')),
-                DataCell(_statusChip('Pending')),
+                DataCell(_statusChip(row['status']?.toString() ?? 'Pending')),
                 DataCell(
                   Wrap(
                     spacing: 8,
@@ -791,7 +805,7 @@ class _ParticipantCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(row['event_name']?.toString() ?? 'Untitled event'),
           const SizedBox(height: 8),
-          Text('${row['start_date'] ?? '---'} - ${row['end_date'] ?? '---'}'),
+          Text(row['datetime']?.toString() ?? '---'),
           Text(row['venue']?.toString() ?? '---'),
           const SizedBox(height: 12),
           Wrap(
@@ -840,8 +854,8 @@ class _EventsPanel extends StatelessWidget {
         const SizedBox(height: 14),
         if (sessions.isEmpty)
           const _EmptyState(
-            icon: Icons.event_busy_outlined,
-            title: 'No active OD events',
+              icon: Icons.event_busy_outlined,
+              title: 'No active OD requests',
             subtitle:
                 'Once approved students are in-session, they will show up here.',
           )

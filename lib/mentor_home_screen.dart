@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'api_service.dart';
 import 'main.dart';
@@ -27,47 +29,65 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
   String? _error;
   List<Map<String, dynamic>> _queue = [];
   List<Map<String, dynamic>> _history = [];
+  Timer? _autoRefreshTimer;
+
+  List<Map<String, dynamic>> _mapList(dynamic data) {
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
 
   @override
   void initState() {
     super.initState();
     _loadAll();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted && !_busy) {
+        _loadAll(silent: true);
+      }
+    });
   }
 
-  Future<void> _loadAll() async {
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadAll({bool silent = false}) async {
     if (_busy) return;
     _busy = true;
     if (!mounted) {
       _busy = false;
       return;
     }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     final results = await Future.wait([MentorApi.queue(), MentorApi.history()]);
     if (!mounted) {
       _busy = false;
       return;
     }
+
     final queueRes = results[0] as ApiResult<dynamic>;
     final historyRes = results[1] as ApiResult<dynamic>;
 
     setState(() {
-      _loading = false;
+      if (!silent) _loading = false;
       if (queueRes.ok) {
-        _queue = (queueRes.data is List ? queueRes.data : const [])
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
+        _queue = _mapList(queueRes.data);
       } else {
         _error = queueRes.error;
       }
-
       if (historyRes.ok) {
-        _history = (historyRes.data is List ? historyRes.data : const [])
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
+        _history = _mapList(historyRes.data);
       }
     });
     _busy = false;
@@ -114,40 +134,6 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
     await _loadAll();
   }
 
-  Future<void> _openProof(Map<String, dynamic> row) async {
-    final b64 = row['attachment_base64']?.toString();
-    final mime = row['attachment_mime']?.toString();
-
-    if (b64 == null || mime == null || b64.isEmpty || mime.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No image proof uploaded')));
-      return;
-    }
-    if (!mime.startsWith('image/')) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Only image proof preview is supported')),
-      );
-      return;
-    }
-
-    final bytes = base64Decode(b64);
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: InteractiveViewer(
-            child: Image.memory(bytes, fit: BoxFit.contain),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final desktop = MediaQuery.of(context).size.width >= 1024;
@@ -157,9 +143,7 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
       backgroundColor: kMentorBg,
       drawer: desktop
           ? null
-          : Drawer(
-              child: _Sidebar(current: _section, onTap: _onTapSection),
-            ),
+          : Drawer(child: _Sidebar(current: _section, onTap: _onTapSection)),
       body: SafeArea(
         child: Row(
           children: [
@@ -182,20 +166,15 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
                     child: _loading
                         ? const Center(child: CircularProgressIndicator())
                         : _error != null
-                        ? _ErrorPanel(error: _error!, onRetry: _loadAll)
-                        : RefreshIndicator(
-                            onRefresh: _loadAll,
-                            child: SingleChildScrollView(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(
-                                20,
-                                20,
-                                20,
-                                28,
+                            ? _ErrorPanel(error: _error!, onRetry: _loadAll)
+                            : RefreshIndicator(
+                                onRefresh: _loadAll,
+                                child: SingleChildScrollView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                                  child: _contentBySection(),
+                                ),
                               ),
-                              child: _contentBySection(),
-                            ),
-                          ),
                   ),
                 ],
               ),
@@ -214,10 +193,8 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
   String _titleForSection(int section) {
     switch (section) {
       case 1:
-        return 'Participants';
+        return 'OD Requests';
       case 2:
-        return 'Events';
-      case 3:
         return 'Settings';
       default:
         return 'Dashboard';
@@ -227,15 +204,12 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
   Widget _contentBySection() {
     switch (_section) {
       case 1:
-        return _ParticipantsPanel(
+        return _ODRequestsPanel(
           rows: _queue,
           onApprove: _approve,
           onReject: _reject,
-          onViewProof: _openProof,
         );
       case 2:
-        return _EventsPanel(history: _history);
-      case 3:
         return _SettingsPanel(onLogout: _logout);
       default:
         return _DashboardPanel(queue: _queue, history: _history);
@@ -326,22 +300,16 @@ class _Sidebar extends StatelessWidget {
             onTap: () => onTap(0),
           ),
           _SidebarItem(
-            icon: Icons.people_alt_rounded,
-            label: 'Participants',
+            icon: Icons.event_note_rounded,
+            label: 'OD Requests',
             active: current == 1,
             onTap: () => onTap(1),
           ),
           _SidebarItem(
-            icon: Icons.event_note_rounded,
-            label: 'Events',
-            active: current == 2,
-            onTap: () => onTap(2),
-          ),
-          _SidebarItem(
             icon: Icons.settings_rounded,
             label: 'Settings',
-            active: current == 3,
-            onTap: () => onTap(3),
+            active: current == 2,
+            onTap: () => onTap(2),
           ),
           const Spacer(),
           const Padding(
@@ -468,12 +436,9 @@ class _DashboardPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final approved = history
-        .where((e) => (e['status']?.toString() ?? '') == 'MENTOR_APPROVED')
-        .length;
-    final rejected = history
-        .where((e) => (e['status']?.toString() ?? '') == 'MENTOR_REJECTED')
-        .length;
+    final pending = queue.where((e) => (e['status']?.toString() ?? '') == 'Pending').length;
+    final approved = history.where((e) => (e['status']?.toString() ?? '') == 'Approved').length;
+    final rejected = history.where((e) => (e['status']?.toString() ?? '') == 'Rejected').length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -484,7 +449,7 @@ class _DashboardPanel extends StatelessWidget {
           children: [
             _StatCard(
               label: 'Pending Reviews',
-              value: queue.length.toString(),
+              value: pending.toString(),
               icon: Icons.pending_actions_rounded,
               color: kMentorPrimary,
             ),
@@ -500,12 +465,6 @@ class _DashboardPanel extends StatelessWidget {
               icon: Icons.cancel_rounded,
               color: const Color(0xFFC62828),
             ),
-            _StatCard(
-              label: 'Total Reviewed',
-              value: history.length.toString(),
-              icon: Icons.task_alt_rounded,
-              color: const Color(0xFF6A1B9A),
-            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -518,7 +477,7 @@ class _DashboardPanel extends StatelessWidget {
             border: Border.all(color: const Color(0xFFE6ECF5)),
           ),
           child: const Text(
-            'Review participant requests from the Participants tab and keep event flow moving.',
+            'Open OD Requests for full request details, proof verification, and approval actions.',
             style: TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
@@ -543,7 +502,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 210,
+      width: 220,
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -564,10 +523,7 @@ class _StatCard extends StatelessWidget {
               child: Icon(icon, color: color, size: 20),
             ),
             const SizedBox(height: 12),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
-            ),
+            Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
             const SizedBox(height: 2),
             Text(label, style: const TextStyle(color: Color(0xFF60708A))),
           ],
@@ -577,18 +533,16 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _ParticipantsPanel extends StatelessWidget {
-  const _ParticipantsPanel({
+class _ODRequestsPanel extends StatelessWidget {
+  const _ODRequestsPanel({
     required this.rows,
     required this.onApprove,
     required this.onReject,
-    required this.onViewProof,
   });
 
   final List<Map<String, dynamic>> rows;
   final ValueChanged<Map<String, dynamic>> onApprove;
   final ValueChanged<Map<String, dynamic>> onReject;
-  final ValueChanged<Map<String, dynamic>> onViewProof;
 
   @override
   Widget build(BuildContext context) {
@@ -600,238 +554,194 @@ class _ParticipantsPanel extends StatelessWidget {
       );
     }
 
-    final desktop = MediaQuery.of(context).size.width >= 900;
-    if (!desktop) {
-      return Column(
-        children: rows
-            .map(
-              (row) => _ParticipantCard(
-                row: row,
-                onApprove: () => onApprove(row),
-                onReject: () => onReject(row),
-                onViewProof: () => onViewProof(row),
-              ),
-            )
-            .toList(),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6ECF5)),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columns: const [
-            DataColumn(label: Text('Participant')),
-            DataColumn(label: Text('Event')),
-            DataColumn(label: Text('Date')),
-            DataColumn(label: Text('Venue')),
-            DataColumn(label: Text('Status')),
-            DataColumn(label: Text('Actions')),
-          ],
-          rows: rows.map((row) {
-            final hasProof =
-                (row['attachment_base64']?.toString().isNotEmpty ?? false) &&
-                (row['attachment_mime']?.toString().isNotEmpty ?? false);
-            return DataRow(
-              cells: [
-                DataCell(Text(row['student_name']?.toString() ?? 'Student')),
-                DataCell(
-                  Text(row['event_name']?.toString() ?? 'Untitled event'),
-                ),
-                DataCell(
-                  Text(
-                    '${row['start_date'] ?? '---'} - ${row['end_date'] ?? '---'}',
-                  ),
-                ),
-                DataCell(Text(row['venue']?.toString() ?? '---')),
-                DataCell(_statusChip('Pending')),
-                DataCell(
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      TextButton(
-                        onPressed: () => onApprove(row),
-                        child: const Text('Approve'),
-                      ),
-                      TextButton(
-                        onPressed: () => onReject(row),
-                        child: const Text('Reject'),
-                      ),
-                      if (hasProof)
-                        TextButton(
-                          onPressed: () => onViewProof(row),
-                          child: const Text('View Proof'),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-  Widget _statusChip(String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3DB),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        value,
-        style: const TextStyle(
-          color: Color(0xFF9C6B00),
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
-      ),
+    return Column(
+      children: rows
+          .map(
+            (row) => _ODRequestCard(
+              row: row,
+              onApprove: () => onApprove(row),
+              onReject: () => onReject(row),
+            ),
+          )
+          .toList(),
     );
   }
 }
 
-class _ParticipantCard extends StatelessWidget {
-  const _ParticipantCard({
+class _ODRequestCard extends StatelessWidget {
+  const _ODRequestCard({
     required this.row,
     required this.onApprove,
     required this.onReject,
-    required this.onViewProof,
   });
 
   final Map<String, dynamic> row;
   final VoidCallback onApprove;
   final VoidCallback onReject;
-  final VoidCallback onViewProof;
+
+  static bool _looksLikeImageUrl(String value) {
+    final lower = value.toLowerCase();
+    return lower.endsWith('.png') ||
+        lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.gif');
+  }
+
+  static bool _looksLikePdfUrl(String value) {
+    return value.toLowerCase().endsWith('.pdf');
+  }
+
+  Widget _buildFilePreview(BuildContext context, String fileUrl) {
+    if (fileUrl.isEmpty) {
+      return const Text('No uploaded proof available.');
+    }
+
+    if (_looksLikeImageUrl(fileUrl)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.network(
+          fileUrl,
+          height: 170,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Text('Unable to load image preview.'),
+        ),
+      );
+    }
+
+    if (_looksLikePdfUrl(fileUrl)) {
+      return InkWell(
+        onTap: () async {
+          final uri = Uri.tryParse(fileUrl);
+          if (uri != null) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        },
+        child: const Text(
+          'View PDF Proof',
+          style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w600),
+        ),
+      );
+    }
+
+    return InkWell(
+      onTap: () async {
+        final uri = Uri.tryParse(fileUrl);
+        if (uri != null) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      },
+      child: Text(
+        fileUrl,
+        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  Widget _buildLegacyPreview() {
+    final b64 = row['attachment_base64']?.toString() ?? '';
+    final mime = row['attachment_mime']?.toString() ?? '';
+
+    if (b64.isEmpty || mime.isEmpty) {
+      return const Text('No uploaded proof available.');
+    }
+
+    if (mime.startsWith('image/')) {
+      try {
+        final bytes = base64Decode(b64);
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.memory(bytes, height: 170, width: double.infinity, fit: BoxFit.cover),
+        );
+      } catch (_) {
+        return const Text('Unable to decode image proof.');
+      }
+    }
+
+    if (mime == 'application/pdf') {
+      return const Text('PDF proof attached (upload URL required for web preview).');
+    }
+
+    return const Text('Unsupported proof format.');
+  }
 
   @override
   Widget build(BuildContext context) {
-    final hasProof =
-        (row['attachment_base64']?.toString().isNotEmpty ?? false) &&
-        (row['attachment_mime']?.toString().isNotEmpty ?? false);
+    final eventName = row['event_name']?.toString() ?? 'Untitled event';
+    final datetime = row['datetime']?.toString() ?? '---';
+    final venue = row['venue']?.toString() ?? '---';
+    final organizer = row['organizer']?.toString() ?? row['organiser']?.toString() ?? '---';
+    final reason = row['reason']?.toString() ?? '---';
+    final fileUrl = row['file_url']?.toString() ?? '';
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6ECF5)),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            row['student_name']?.toString() ?? 'Student',
-            style: const TextStyle(fontWeight: FontWeight.w700),
+            eventName,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 4),
-          Text(row['event_name']?.toString() ?? 'Untitled event'),
           const SizedBox(height: 8),
-          Text('${row['start_date'] ?? '---'} - ${row['end_date'] ?? '---'}'),
-          Text(row['venue']?.toString() ?? '---'),
+          Text('Date & Time: $datetime'),
+          Text('Venue: $venue'),
+          Text('Organizer: $organizer'),
+          const SizedBox(height: 10),
+          Text('Reason: $reason'),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton(
-                onPressed: onApprove,
-                style: FilledButton.styleFrom(backgroundColor: kMentorPrimary),
-                child: const Text('Approve'),
-              ),
-              OutlinedButton(onPressed: onReject, child: const Text('Reject')),
-              if (hasProof)
-                TextButton(
-                  onPressed: onViewProof,
-                  child: const Text('View Proof'),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE3E8F2)),
+              color: const Color(0xFFFAFCFF),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Proof',
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
-            ],
+                const SizedBox(height: 8),
+                fileUrl.isNotEmpty ? _buildFilePreview(context, fileUrl) : _buildLegacyPreview(),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  onPressed: onApprove,
+                  child: const Text('Approve'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  onPressed: onReject,
+                  child: const Text('Reject'),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _EventsPanel extends StatelessWidget {
-  const _EventsPanel({required this.history});
-
-  final List<Map<String, dynamic>> history;
-
-  @override
-  Widget build(BuildContext context) {
-    if (history.isEmpty) {
-      return const _EmptyState(
-        icon: Icons.event_busy_outlined,
-        title: 'No reviewed events yet',
-        subtitle: 'Approved and rejected event records will appear here.',
-      );
-    }
-
-    final Map<String, List<Map<String, dynamic>>> grouped = {};
-    for (final item in history) {
-      final key = (item['event_name']?.toString().trim().isNotEmpty ?? false)
-          ? item['event_name'].toString().trim()
-          : 'Untitled event';
-      grouped.putIfAbsent(key, () => []).add(item);
-    }
-    final entries = grouped.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-
-    return Column(
-      children: entries.map((entry) {
-        final approved = entry.value
-            .where((e) => (e['status']?.toString() ?? '') == 'MENTOR_APPROVED')
-            .length;
-        final rejected = entry.value
-            .where((e) => (e['status']?.toString() ?? '') == 'MENTOR_REJECTED')
-            .length;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE6ECF5)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: kMentorPrimary.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.event_available, color: kMentorPrimary),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.key,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    Text(
-                      'Approved: $approved  |  Rejected: $rejected',
-                      style: const TextStyle(color: Color(0xFF66768F)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
     );
   }
 }

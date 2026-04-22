@@ -4,7 +4,7 @@ import '../api_service.dart';
 import '../student_home_screen.dart';
 import '../mentor_home_screen.dart';
 import '../hod_home_screen.dart';
-import '../ec_home_screen.dart';
+import '../principal_home_screen.dart';
 import 'register_screen.dart';
 
 class ODLoginUI extends StatefulWidget {
@@ -15,7 +15,7 @@ class ODLoginUI extends StatefulWidget {
 }
 
 class _ODLoginUIState extends State<ODLoginUI> {
-  String _loginType = 'student'; // student | mentor | ec | hod
+  String _loginType = 'student'; // student | mentor | hod | principal
   bool _obscurePassword = true;
   String? _welcomeUsername;
   final _emailController = TextEditingController();
@@ -207,22 +207,22 @@ class _ODLoginUIState extends State<ODLoginUI> {
         MaterialPageRoute(builder: (context) => const MentorHomeScreen()),
       );
       return;
-    } else if (_loginType == 'ec') {
+    } else if (_loginType == 'principal') {
       if (!_isValidRoleEmail) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              "EC email must be: name@department.ritchennai.edu.in",
+              "Principal email must be: name@department.ritchennai.edu.in",
             ),
             backgroundColor: Colors.red,
           ),
         );
         return;
       }
-      AuthStore.applyEcLogin(_emailController.text);
+      AuthStore.applyPrincipalLogin(_emailController.text);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const ECHomeScreen()),
+        MaterialPageRoute(builder: (context) => const PrincipalHomeScreen()),
       );
       return;
     } else if (_loginType == 'hod') {
@@ -277,8 +277,14 @@ class _ODLoginUIState extends State<ODLoginUI> {
           Expanded(
             child: _toggleButton("Mentor", _loginType == 'mentor', 'mentor'),
           ),
-          Expanded(child: _toggleButton("EC", _loginType == 'ec', 'ec')),
           Expanded(child: _toggleButton("HoD", _loginType == 'hod', 'hod')),
+          Expanded(
+            child: _toggleButton(
+              "Principal",
+              _loginType == 'principal',
+              'principal',
+            ),
+          ),
         ],
       ),
     );

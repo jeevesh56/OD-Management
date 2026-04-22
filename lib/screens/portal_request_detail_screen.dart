@@ -20,23 +20,18 @@ class PortalRequestDetailScreen extends StatelessWidget {
     final status = request['status']?.toString() ?? '';
     final badgeColor = portalOdStatusColor(status);
     final stages = odTimelineStagesFromRequest(request);
+    final schedule = request['datetime']?.toString().isNotEmpty == true
+        ? request['datetime'].toString()
+        : portalOdDateLabel(request['start_date'], request['end_date']);
 
-    final mentorDone = const {
-      'MENTOR_APPROVED',
-      'EC_CONFIRMED',
-      'EC_REJECTED',
-      'HOD_APPROVED',
-      'HOD_REJECTED',
-    }.contains(status);
+    final mentorDone = request['mentor_approved'] == true ||
+        const {'MENTOR_APPROVED', 'HOD_APPROVED', 'Approved'}.contains(status);
     final mentorRejected = status == 'MENTOR_REJECTED';
-    final ecDone = const {
-      'EC_CONFIRMED',
-      'HOD_APPROVED',
-      'HOD_REJECTED',
-    }.contains(status);
-    final ecRejected = status == 'EC_REJECTED';
-    final hodDone = status == 'HOD_APPROVED';
+    final hodDone = request['hod_approved'] == true || status == 'HOD_APPROVED';
     final hodRejected = status == 'HOD_REJECTED';
+    final principalDone =
+        request['principal_approved'] == true || status == 'Approved';
+    final principalRejected = status == 'Rejected';
 
     return Scaffold(
       backgroundColor: scheme.surfaceContainerLowest,
@@ -106,21 +101,19 @@ class PortalRequestDetailScreen extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 14),
-                            _detailRow(Icons.event_outlined, 'Dates',
-                                portalOdDateLabel(
-                                    request['start_date'], request['end_date'])),
-                            _detailRow(Icons.access_time, 'Time',
-                                '${request['start_time'] ?? '—'} – ${request['end_time'] ?? '—'}'),
+                            _detailRow(Icons.event_outlined, 'Date & time', schedule),
                             _detailRow(Icons.place_outlined, 'Venue',
                                 request['venue']?.toString() ?? '—'),
                             _detailRow(Icons.groups_outlined, 'Organizer',
-                                request['organiser']?.toString() ?? '—'),
+                              request['organiser']?.toString() ??
+                                request['organizer']?.toString() ??
+                                '—'),
                             _detailRow(Icons.badge_outlined, 'Request ID',
                                 request['id']?.toString() ?? '—'),
                             const Divider(height: 28),
                             if (request['mentor_comment'] != null ||
-                                request['ec_comment'] != null ||
-                                request['hod_comment'] != null) ...[
+                              request['hod_comment'] != null ||
+                              request['principal_comment'] != null) ...[
                               const Text(
                                 'Staff remarks',
                                 style: TextStyle(
@@ -134,14 +127,14 @@ class PortalRequestDetailScreen extends StatelessWidget {
                                   'Mentor: ${request['mentor_comment']}',
                                   style: const TextStyle(height: 1.4),
                                 ),
-                              if (request['ec_comment'] != null)
-                                Text(
-                                  'EC: ${request['ec_comment']}',
-                                  style: const TextStyle(height: 1.4),
-                                ),
                               if (request['hod_comment'] != null)
                                 Text(
                                   'HoD: ${request['hod_comment']}',
+                                  style: const TextStyle(height: 1.4),
+                                ),
+                              if (request['principal_comment'] != null)
+                                Text(
+                                  'Principal: ${request['principal_comment']}',
                                   style: const TextStyle(height: 1.4),
                                 ),
                               const Divider(height: 28),
@@ -184,18 +177,18 @@ class PortalRequestDetailScreen extends StatelessWidget {
                                           : PortalChipState.pending,
                                 ),
                                 PortalProgressChip(
-                                  text: 'EC',
-                                  state: ecRejected
-                                      ? PortalChipState.rejected
-                                      : ecDone
-                                          ? PortalChipState.completed
-                                          : PortalChipState.pending,
-                                ),
-                                PortalProgressChip(
                                   text: 'HoD',
                                   state: hodRejected
                                       ? PortalChipState.rejected
                                       : hodDone
+                                          ? PortalChipState.completed
+                                          : PortalChipState.pending,
+                                ),
+                                PortalProgressChip(
+                                  text: 'Principal',
+                                  state: principalRejected
+                                      ? PortalChipState.rejected
+                                      : principalDone
                                           ? PortalChipState.completed
                                           : PortalChipState.pending,
                                 ),
@@ -268,7 +261,7 @@ class PortalRequestDetailScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                      if (status == 'HOD_APPROVED') ...[
+                      if (status == 'Approved' || request['principal_approved'] == true) ...[
                         const SizedBox(height: 16),
                         SizedBox(
                           width: double.infinity,

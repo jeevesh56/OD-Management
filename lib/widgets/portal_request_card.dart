@@ -16,29 +16,22 @@ class PortalRequestCard extends StatelessWidget {
     final status = r['status']?.toString() ?? '';
     final badgeColor = portalOdStatusColor(status);
     final title = r['event_name']?.toString() ?? '—';
-    final dates = portalOdDateLabel(r['start_date'], r['end_date']);
+    final schedule = r['datetime']?.toString().isNotEmpty == true
+        ? r['datetime'].toString()
+        : portalOdDateLabel(r['start_date'], r['end_date']);
+    final venue = r['venue']?.toString() ?? '—';
     final reason = r['reason']?.toString() ?? '—';
-    final organiser = r['organiser']?.toString() ?? '—';
-    final submitted = r['created_at']?.toString() ?? '—';
+    final organiser = r['organiser']?.toString() ?? r['organizer']?.toString() ?? '—';
+    final submitted = r['created_at']?.toString() ?? r['datetime']?.toString() ?? '—';
 
-    final mentorDone = const {
-      'MENTOR_APPROVED',
-      'EC_CONFIRMED',
-      'EC_REJECTED',
-      'HOD_APPROVED',
-      'HOD_REJECTED',
-    }.contains(status);
+    final mentorDone = r['mentor_approved'] == true ||
+        const {'MENTOR_APPROVED', 'HOD_APPROVED', 'Approved'}.contains(status);
     final mentorRejected = status == 'MENTOR_REJECTED';
 
-    final ecDone = const {
-      'EC_CONFIRMED',
-      'HOD_APPROVED',
-      'HOD_REJECTED',
-    }.contains(status);
-    final ecRejected = status == 'EC_REJECTED';
-
-    final hodDone = status == 'HOD_APPROVED';
+    final hodDone = r['hod_approved'] == true || status == 'HOD_APPROVED';
     final hodRejected = status == 'HOD_REJECTED';
+    final principalDone = r['principal_approved'] == true || status == 'Approved';
+    final principalRejected = status == 'Rejected';
 
     final List<Widget> timeline = [];
     if (submitted != '—') {
@@ -51,19 +44,16 @@ class PortalRequestCard extends StatelessWidget {
     } else if (mentorDone) {
       timeline.add(const Text('✓ Mentor approved'));
     }
-    if (ecRejected) {
-      timeline.add(
-          const Text('✗ EC rejected', style: TextStyle(color: Colors.red)));
-    } else if (ecDone && !hodDone && !hodRejected) {
-      timeline.add(const Text('✓ EC confirmed — awaiting HoD'));
-    } else if (ecDone) {
-      timeline.add(const Text('✓ EC confirmed'));
-    }
     if (hodRejected) {
       timeline.add(const Text('✗ HoD rejected',
           style: TextStyle(color: Colors.red)));
     } else if (hodDone) {
       timeline.add(const Text('✓ HoD approved'));
+    }
+    if (principalRejected) {
+      timeline.add(const Text('✗ Principal rejected', style: TextStyle(color: Colors.red)));
+    } else if (principalDone) {
+      timeline.add(const Text('✓ Principal approved'));
     }
     if (timeline.isEmpty) {
       timeline.add(const Text('Track your request below.'));
@@ -132,7 +122,7 @@ class PortalRequestCard extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    dates,
+                    schedule,
                     style: TextStyle(color: scheme.onSurface.withOpacity(0.72), fontSize: 14),
                   ),
                   const Spacer(),
@@ -141,6 +131,8 @@ class PortalRequestCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
+              Text('Venue: $venue', maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 4),
               Text('Reason: $reason', maxLines: 2, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 6),
               Text('Organizer: $organiser'),
@@ -169,18 +161,18 @@ class PortalRequestCard extends StatelessWidget {
                             : PortalChipState.pending,
                   ),
                   PortalProgressChip(
-                    text: 'EC',
-                    state: ecRejected
-                        ? PortalChipState.rejected
-                        : ecDone
-                            ? PortalChipState.completed
-                            : PortalChipState.pending,
-                  ),
-                  PortalProgressChip(
                     text: 'HoD',
                     state: hodRejected
                         ? PortalChipState.rejected
                         : hodDone
+                            ? PortalChipState.completed
+                            : PortalChipState.pending,
+                  ),
+                  PortalProgressChip(
+                    text: 'Principal',
+                    state: principalRejected
+                        ? PortalChipState.rejected
+                        : principalDone
                             ? PortalChipState.completed
                             : PortalChipState.pending,
                   ),

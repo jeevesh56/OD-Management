@@ -1,19 +1,15 @@
 // ignore_for_file: avoid_web_libraries_in_flutter
 // dart:html only available on web build — used for file picker
 // ignore: uri_does_not_exist
-import 'dart:convert';
 import 'dart:html' as html;
 
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
-import 'screens/portal_qr_screen.dart';
 import 'widgets/portal_page_layout.dart';
 import 'widgets/portal_request_card.dart';
-import 'widgets/portal_stat_card.dart';
 
 const Color kStudentPrimary = Color(0xFF1257B0);
 const Color kStudentSidebar = Color(0xFF102A5C);
@@ -29,22 +25,7 @@ class StudentHomeScreen extends StatefulWidget {
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _tab = 0;
-  late final List<Widget> _pages;
-
-  @override
-  void initState() {
-    super.initState();
-    _pages = [
-      _Dashboard(
-        onCreateNewRequest: () => setState(() => _tab = 1),
-      ),
-      _NewODPage(
-        onSubmitted: () => setState(() => _tab = 0),
-      ),
-      const _HistoryPage(),
-      const _ProfilePage(),
-    ];
-  }
+  int _dashboardReloadToken = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +67,20 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   Expanded(
                     child: IndexedStack(
                       index: _tab,
-                      children: _pages,
+                      children: [
+                        _Dashboard(
+                          key: ValueKey('dashboard-$_dashboardReloadToken'),
+                          onCreateNewRequest: () => setState(() => _tab = 1),
+                        ),
+                        _NewODPage(
+                          onSubmitted: () => setState(() {
+                            _tab = 0;
+                            _dashboardReloadToken++;
+                          }),
+                        ),
+                        const _HistoryPage(),
+                        const _ProfilePage(),
+                      ],
                     ),
                   ),
                 ],
@@ -346,7 +340,7 @@ class _StudentTopbar extends StatelessWidget {
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 class _Dashboard extends StatefulWidget {
-  const _Dashboard({required this.onCreateNewRequest});
+  const _Dashboard({super.key, required this.onCreateNewRequest});
 
   final VoidCallback onCreateNewRequest;
 
@@ -355,68 +349,102 @@ class _Dashboard extends StatefulWidget {
 }
 
 class _DashboardState extends State<_Dashboard> {
-  bool _loading = true;
-  bool _busy = false;
-  List _requests = [];
+  late Future<List<Map<String, dynamic>>> _futureRequests;
   Map? _activeSession;
-  String? _error;
-  int _tabIndex = 0; // 0 = My Requests, 1 = My QR Code
+  String? _resubmittingId;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _futureRequests = _fetchRequests();
+    _loadActiveSession();
   }
 
-  Future<void> _load() async {
-    if (_busy) return;
-    _busy = true;
-    if (!mounted) return;
+  Future<List<Map<String, dynamic>>> _fetchRequests() async {
+    try {
+      final reqRes = await OdApi.myRequests();
+      if (!reqRes.ok) {
+        throw Exception(reqRes.error ?? 'Failed to load dashboard');
+      }
+      final data = reqRes.data;
+      if (data is! List) return const [];
+      return data
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _loadActiveSession() async {
+    final sessRes = await OdApi.activeSession();
+    if (!mounted || !sessRes.ok) return;
     setState(() {
-      _loading = true;
-      _error = null;
+      _activeSession = sessRes.data;
     });
-    final results = await Future.wait([
-      OdApi.myRequests(),
-      OdApi.activeSession(),
-    ]);
-    if (!mounted) {
-      _busy = false;
+  }
+
+  Future<void> _refreshRequests() async {
+    final next = _fetchRequests();
+    setState(() {
+      _futureRequests = next;
+    });
+    await next;
+  }
+
+  String _statusValue(Map item) {
+    return (item['status']?.toString() ?? 'Pending').trim().toLowerCase();
+  }
+
+  String _rejectionReason(Map item) {
+    final reason = item['rejection_reason']?.toString().trim();
+    if (reason != null && reason.isNotEmpty) return reason;
+    final review = item['review_note']?.toString().trim();
+    if (review != null && review.isNotEmpty) return review;
+    return 'Details were incomplete or did not meet policy checks.';
+  }
+
+  String _getSuggestion(String reason) {
+    final lower = reason.toLowerCase();
+    if (lower.contains('proof')) {
+      return 'Upload valid proof document.';
+    }
+    if (lower.contains('late')) {
+      return 'Apply before deadline next time.';
+    }
+    if (lower.contains('details')) {
+      return 'Fill all details correctly.';
+    }
+    return 'Check your request and resubmit.';
+  }
+
+  Future<void> _resubmit(Map item) async {
+    final id = item['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+
+    setState(() => _resubmittingId = id);
+    final res = await OdApi.resubmitRequest(item);
+    if (!mounted) return;
+    setState(() => _resubmittingId = null);
+
+    if (!res.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(res.error ?? 'Resubmit failed')),
+      );
       return;
     }
-    final reqRes = results[0];
-    final sessRes = results[1];
-    setState(() {
-      _loading = false;
-      if (reqRes.ok) _requests = reqRes.data as List? ?? [];
-      if (sessRes.ok) _activeSession = sessRes.data as Map?;
-      if (!reqRes.ok) _error = reqRes.error;
-    });
-    _busy = false;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Request sent back for review.')),
+    );
+    widget.onCreateNewRequest();
+    await _refreshRequests();
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    if (_loading) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          const PortalDecoratedBackground(bottomCircleOffset: 80),
-          const Center(child: CircularProgressIndicator()),
-        ],
-      );
-    }
-    if (_error != null) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          const PortalDecoratedBackground(bottomCircleOffset: 80),
-          _ErrorView(_error!, _load),
-        ],
-      );
-    }
-
     final name = AuthStore.fullName ?? 'Student';
     final sp = AuthStore.studentProfile;
     final section = sp?['section']?.toString() ??
@@ -433,165 +461,181 @@ class _DashboardState extends State<_Dashboard> {
       ? activeSessionName
       : 'Active OD session';
 
-    int total = _requests.length;
-    int approved = 0;
-    int rejected = 0;
-    for (final x in _requests) {
-      final s = (x as Map)['status']?.toString() ?? '';
-      if (s == 'HOD_APPROVED') {
-        approved++;
-      } else if (s.contains('REJECTED') || s == 'CANCELLED') {
-        rejected++;
-      }
-    }
-    final pending = total - approved - rejected;
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _futureRequests,
+      builder: (context, snapshot) {
+        return RefreshIndicator(
+          onRefresh: _refreshRequests,
+          child: Stack(
+            children: [
+              const PortalDecoratedBackground(bottomCircleOffset: 80),
+              if (snapshot.connectionState == ConnectionState.waiting)
+                const Center(child: CircularProgressIndicator())
+              else if (snapshot.hasError)
+                _ErrorView('Error loading dashboard', _refreshRequests)
+              else
+                SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1040),
+                      child: Builder(
+                        builder: (context) {
+                          final requests = snapshot.data ?? const <Map<String, dynamic>>[];
+                          final total = requests.length;
+                          var approved = 0;
+                          var rejected = 0;
+                          for (final x in requests) {
+                            final s = x['status']?.toString() ?? '';
+                            if (s == 'Approved') {
+                              approved++;
+                            } else if (s == 'Rejected') {
+                              rejected++;
+                            }
+                          }
+                          final pending = total - approved - rejected;
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: Stack(
-        children: [
-          const PortalDecoratedBackground(bottomCircleOffset: 80),
-          SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1040),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Student Portal',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      welcomeSub,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: scheme.onSurface.withOpacity(0.72),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        SizedBox(
-                          width: 170,
-                          child: PortalStatCard(
-                            title: 'Total',
-                            value: '$total',
-                            icon: Icons.description,
-                            color: Colors.blue,
-                          ),
-                        ),
-                        SizedBox(
-                          width: 170,
-                          child: PortalStatCard(
-                            title: 'Approved',
-                            value: '$approved',
-                            icon: Icons.check_circle,
-                            color: Colors.green,
-                          ),
-                        ),
-                        SizedBox(
-                          width: 170,
-                          child: PortalStatCard(
-                            title: 'Pending',
-                            value: '$pending',
-                            icon: Icons.schedule,
-                            color: Colors.orange,
-                          ),
-                        ),
-                        SizedBox(
-                          width: 170,
-                          child: PortalStatCard(
-                            title: 'Rejected',
-                            value: '$rejected',
-                            icon: Icons.cancel,
-                            color: Colors.red,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    if (_activeSession?['has_active_session'] == true)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: scheme.secondaryContainer,
-                          border: Border.all(color: scheme.secondary.withOpacity(0.5)),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.check_circle, color: scheme.onSecondaryContainer),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'OD active: $sessionLabel',
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Student Portal',
                                 style: TextStyle(
-                                  color: scheme.onSecondaryContainer,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: portalCardDecoration(context, radius: 16),
-                        child: Row(
-                          children: [
-                            Icon(Icons.info_outline, color: scheme.onSurface.withOpacity(0.72)),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'No active OD session',
-                                style: TextStyle(color: scheme.onSurface.withOpacity(0.72)),
+                              const SizedBox(height: 6),
+                              Text(
+                                welcomeSub,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  color: scheme.onSurface.withOpacity(0.72),
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 20),
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: scheme.surface,
-                        borderRadius: BorderRadius.circular(999),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x11000000),
-                            blurRadius: 6,
-                            offset: Offset(0, 2),
-                          ),
-                        ],
-                        border: Border.all(color: scheme.outlineVariant),
-                      ),
-                      child: Row(
-                        children: [
-                          _topTabButton('My Requests', 0),
-                          _topTabButton('My QR Code', 1),
-                        ],
+                              const SizedBox(height: 20),
+                              _buildStatsRow(total, approved, pending, rejected),
+                              const SizedBox(height: 16),
+                              if (_activeSession?['has_active_session'] == true)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: scheme.secondaryContainer,
+                                    border: Border.all(color: scheme.secondary.withOpacity(0.5)),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.check_circle, color: scheme.onSecondaryContainer),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          'OD active: $sessionLabel',
+                                          style: TextStyle(
+                                            color: scheme.onSecondaryContainer,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: portalCardDecoration(context, radius: 16),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.info_outline, color: scheme.onSurface.withOpacity(0.72)),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          'No active OD session',
+                                          style: TextStyle(color: scheme.onSurface.withOpacity(0.72)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              const SizedBox(height: 20),
+                              _buildActionCenter(requests),
+                              const SizedBox(height: 18),
+                              _buildRequestsSection(requests),
+                            ],
+                          );
+                        },
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    if (_tabIndex == 0)
-                      _buildRequestsSection()
-                    else
-                      _buildQrSection(context, name, sp, _requests),
-                  ],
+                  ),
                 ),
-              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatsRow(int total, int approved, int pending, int rejected) {
+    final cards = [
+      _buildStatCard('Total', total, Colors.blue),
+      _buildStatCard('Approved', approved, Colors.green),
+      _buildStatCard('Pending', pending, Colors.orange),
+      _buildStatCard('Rejected', rejected, Colors.red),
+    ];
+
+    final isWide = MediaQuery.of(context).size.width >= 980;
+    if (isWide) {
+      return Row(
+        children: [
+          Expanded(child: cards[0]),
+          const SizedBox(width: 12),
+          Expanded(child: cards[1]),
+          const SizedBox(width: 12),
+          Expanded(child: cards[2]),
+          const SizedBox(width: 12),
+          Expanded(child: cards[3]),
+        ],
+      );
+    }
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: cards
+          .map(
+            (card) => SizedBox(
+              width: 220,
+              child: card,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Widget _buildStatCard(String title, int count, Color color) {
+    return Container(
+      height: 130,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 6),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 16)),
+          const SizedBox(height: 10),
+          Text(
+            count.toString(),
+            style: TextStyle(
+              fontSize: 30,
+              fontWeight: FontWeight.bold,
+              color: color,
             ),
           ),
         ],
@@ -599,41 +643,107 @@ class _DashboardState extends State<_Dashboard> {
     );
   }
 
-  Widget _topTabButton(String label, int index) {
-    final bool selected = _tabIndex == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _tabIndex = index;
-          });
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: selected
-                    ? Theme.of(context).colorScheme.onPrimary
-                    : Theme.of(context).colorScheme.onSurface.withOpacity(0.84),
-              ),
-            ),
-          ),
+  Widget _buildActionCenter(List<Map<String, dynamic>> requests) {
+    final rejected = requests
+        .where((e) => _statusValue(e) == 'rejected')
+        .toList();
+    final pending = requests
+        .where((e) => _statusValue(e) == 'pending')
+        .toList();
+
+    if (rejected.isNotEmpty) {
+      final item = rejected.first;
+      final reason = _rejectionReason(item);
+      final suggestion = _getSuggestion(reason);
+      final isBusy = _resubmittingId == (item['id']?.toString() ?? '');
+
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.red.shade100),
         ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Action Center',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Action Required',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text('Reason: $reason'),
+            const SizedBox(height: 8),
+            Text(
+              suggestion,
+              style: const TextStyle(color: Colors.orange),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: isBusy ? null : () => _resubmit(item),
+              child: Text(isBusy ? 'Resubmitting...' : 'Fix & Resubmit'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (pending.isNotEmpty) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.orange.shade100),
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Action Center',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text('Your OD request is under review'),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.green.shade100),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Action Center',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          Text('All requests are approved'),
+        ],
       ),
     );
   }
 
-  Widget _buildRequestsSection() {
-    if (_requests.isEmpty) {
+  Widget _buildRequestsSection(List<Map<String, dynamic>> requests) {
+    if (requests.isEmpty) {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
@@ -669,178 +779,81 @@ class _DashboardState extends State<_Dashboard> {
         ),
         const SizedBox(height: 4),
         Text(
-          '${_requests.length} total request${_requests.length == 1 ? '' : 's'}',
+          '${requests.length} total request${requests.length == 1 ? '' : 's'}',
           style: const TextStyle(color: Colors.grey),
         ),
         const SizedBox(height: 16),
-        ..._requests.map(
-          (r) => PortalRequestCard(r: r as Map),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQrSection(
-    BuildContext context,
-    String name,
-    Map? sp,
-    List requests,
-  ) {
-    final scheme = Theme.of(context).colorScheme;
-    final register = AuthStore.registrationFromLoginEmail().isNotEmpty
-        ? AuthStore.registrationFromLoginEmail()
-        : (sp?['register_number']?.toString() ?? '—');
-    final studentQrData = jsonEncode({
-      'type': 'student_id',
-      'name': name,
-      'register': register,
-      'user_id': AuthStore.userId ?? '',
-    });
-    final approved = requests
-        .where((x) => (x as Map)['status']?.toString() == 'HOD_APPROVED')
-        .toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(24),
-          decoration: portalCardDecoration(context, radius: 22),
-          child: Column(
-            children: [
-              const Text(
-                'Student QR',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+        ...requests.map((r) {
+          final status = r['status']?.toString() ?? 'Pending';
+          final event = r['event_name']?.toString() ?? 'Untitled event';
+          final datetime = r['datetime']?.toString() ?? '---';
+          final venue = r['venue']?.toString() ?? '---';
+          final statusColor = status == 'Approved'
+              ? Colors.green
+              : status == 'Rejected'
+                  ? Colors.red
+                  : Colors.orange;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(22),
+            constraints: const BoxConstraints(minHeight: 170),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE6ECF5)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Scan for identity at the desk',
-                style: TextStyle(color: scheme.onSurface.withOpacity(0.72), fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: scheme.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: scheme.outlineVariant),
-                ),
-                child: QrImageView(
-                  data: studentQrData,
-                  size: 200,
-                  backgroundColor: scheme.surface,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                name,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Reg. No: $register',
-                style: TextStyle(color: scheme.onSurface.withOpacity(0.72)),
-              ),
-            ],
-          ),
-        ),
-        if (approved.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          const Text(
-            'OD pass (approved events)',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Full-screen QR for each approved OD',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-          ),
-          const SizedBox(height: 12),
-          ...approved.map((raw) {
-            final m = raw as Map;
-            final ev = m['event_name']?.toString() ?? 'Event';
-            final id = m['id']?.toString() ?? '';
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PortalQrScreen(
-                          eventName: ev,
-                          requestId: id,
-                        ),
-                      ),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: const [
-                        BoxShadow(blurRadius: 10, color: Colors.black12),
-                      ],
-                      border: Border.all(color: Colors.green.shade100),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.qr_code_2_rounded,
-                            color: Colors.green.shade700, size: 28),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                ev,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15,
-                                ),
-                              ),
-                              Text(
-                                'Open OD pass',
-                                style: TextStyle(
-                                  color: Colors.green.shade800,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.open_in_new_rounded,
-                            color: Colors.grey.shade500, size: 20),
-                      ],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  event,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  datetime,
+                  style: const TextStyle(fontSize: 15),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  venue,
+                  style: const TextStyle(fontSize: 15),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
                     ),
                   ),
                 ),
-              ),
-            );
-          }),
-        ],
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
+
 }
 
 // ── NEW OD FORM ───────────────────────────────────────────────────────────────
@@ -854,20 +867,11 @@ class _NewODPage extends StatefulWidget {
 }
 
 class _NewODPageState extends State<_NewODPage> {
-  final _eventCtrl = TextEditingController();
-  final _orgCtrl = TextEditingController();
-  final _venueCtrl = TextEditingController();
-  final _reasonCtrl = TextEditingController();
-
-  List<Map<String, dynamic>> _events = [];
-  String? _selectedEventId;
-  bool _loadingEvents = true;
-  String? _eventsError;
-
-  DateTime? _startDate;
-  DateTime? _endDate;
-  TimeOfDay? _startTime;
-  TimeOfDay? _endTime;
+  final TextEditingController eventNameController = TextEditingController();
+  final TextEditingController venueController = TextEditingController();
+  final TextEditingController organizerController = TextEditingController();
+  final TextEditingController reasonController = TextEditingController();
+  DateTime? selectedDateTime;
 
   // File attachment
   String? _fileName;
@@ -876,8 +880,6 @@ class _NewODPageState extends State<_NewODPage> {
   bool _fileLoading = false;
 
   bool _submitting = false;
-  bool _checkingOverlap = false;
-  String? _overlapWarning;
 
   OutlineInputBorder _border(Color c) => OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -887,217 +889,59 @@ class _NewODPageState extends State<_NewODPage> {
   @override
   void initState() {
     super.initState();
-    _loadEvents();
   }
 
   @override
   void dispose() {
-    _eventCtrl.dispose();
-    _orgCtrl.dispose();
-    _venueCtrl.dispose();
-    _reasonCtrl.dispose();
+    eventNameController.dispose();
+    venueController.dispose();
+    organizerController.dispose();
+    reasonController.dispose();
     super.dispose();
   }
-
-  Future<void> _loadEvents() async {
-    final r = await OdApi.events();
-    if (!mounted) return;
-    setState(() {
-      _loadingEvents = false;
-      if (r.ok) {
-        _events = List<Map<String, dynamic>>.from(r.data ?? []);
-        if (_events.isNotEmpty) {
-          _syncEventSelection(_events.first['event_id']?.toString());
-        }
-      } else {
-        _eventsError = r.error;
-      }
-    });
-  }
-
-  void _syncEventSelection(String? eventId) {
-    final selected = _events.cast<Map<String, dynamic>>().firstWhere(
-          (event) => event['event_id']?.toString() == eventId,
-          orElse: () => <String, dynamic>{},
-        );
-    _selectedEventId = eventId;
-    _eventCtrl.text = selected['event_name']?.toString() ?? '';
-    _orgCtrl.text = selected['organiser_body']?.toString() ?? _orgCtrl.text;
-    _venueCtrl.text = selected['venue']?.toString() ?? _venueCtrl.text;
-  }
-
-  // ── Web file picker using dart:html ───────────────────────────────────────
-  Future<void> _pickFile() async {
-    setState(() => _fileLoading = true);
-    final input = html.FileUploadInputElement();
-    input.accept = '.pdf,.jpg,.jpeg,.png';
-    input.click();
-
-    await input.onChange.first;
-    if (input.files == null || input.files!.isEmpty) {
-      setState(() => _fileLoading = false);
-      return;
-    }
-
-    final file = input.files![0];
-    final reader = html.FileReader();
-    reader.readAsDataUrl(file);
-    await reader.onLoad.first;
-
-    // result is "data:mime;base64,XXXX" — strip the prefix
-    final result = reader.result as String;
-    final commaIdx = result.indexOf(',');
-    final base64 = result.substring(commaIdx + 1);
-    final mime = result.substring(5, result.indexOf(';'));
-
-    // Limit to 5 MB
-    if (base64.length * 3 / 4 > 5 * 1024 * 1024) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('File too large (max 5 MB)'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      setState(() => _fileLoading = false);
-      return;
-    }
-
-    setState(() {
-      _fileName = file.name;
-      _fileBase64 = base64;
-      _fileMime = mime;
-      _fileLoading = false;
-    });
-  }
-
-  // ── Date / time helpers ───────────────────────────────────────────────────
-  Future<void> _pickDate(bool isStart) async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (d == null) return;
-    setState(() => isStart ? _startDate = d : _endDate = d);
-
-    // Check overlap once both dates set
-    if (_startDate != null && _endDate != null) {
-      _checkOverlap();
-    }
-  }
-
-  Future<void> _pickTime(bool isStart) async {
-    final t = await showTimePicker(
-      context: context,
-      initialTime: isStart
-          ? const TimeOfDay(hour: 9, minute: 0)
-          : const TimeOfDay(hour: 17, minute: 0),
-    );
-    if (t == null) return;
-    setState(() => isStart ? _startTime = t : _endTime = t);
-  }
-
-  Future<void> _checkOverlap() async {
-    if (_startDate == null || _endDate == null) return;
-    setState(() {
-      _checkingOverlap = true;
-      _overlapWarning = null;
-    });
-    final r = await OdApi.checkOverlap(
-      startDate: _fmt(_startDate!),
-      endDate: _fmt(_endDate!),
-    );
-    setState(() {
-      _checkingOverlap = false;
-      if (r.ok && r.data?['has_overlap'] == true) {
-        _overlapWarning = '⚠ Overlaps with an existing OD request';
-      }
-    });
-  }
-
-  String _fmt(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  String _fmtTime(TimeOfDay t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-
-  String _displayDate(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-
-  String _displayTime(TimeOfDay t) => t.format(context);
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   Future<void> _submit() async {
     // Validate
-    if (_loadingEvents) {
-      _err('Events are still loading');
+    if (selectedDateTime == null) {
+      _err('Select date and time');
       return;
     }
-    if (_eventsError != null) {
-      _err('Unable to load events');
+    if (eventNameController.text.trim().isEmpty) {
+      _err('Enter event name');
       return;
     }
-    if (_selectedEventId == null) {
-      _err('Select an event');
-      return;
-    }
-    if (_orgCtrl.text.trim().isEmpty) {
-      _err('Enter organiser');
-      return;
-    }
-    if (_venueCtrl.text.trim().isEmpty) {
+    if (venueController.text.trim().isEmpty) {
       _err('Enter venue');
       return;
     }
-    if (_startDate == null) {
-      _err('Select start date');
+    if (organizerController.text.trim().isEmpty) {
+      _err('Enter organizer');
       return;
     }
-    if (_endDate == null) {
-      _err('Select end date');
-      return;
-    }
-    if (_startTime == null) {
-      _err('Select start time');
-      return;
-    }
-    if (_endTime == null) {
-      _err('Select end time');
-      return;
-    }
-    if (_endDate!.isBefore(_startDate!)) {
-      _err('End date cannot be before start date');
-      return;
-    }
-    if (_reasonCtrl.text.trim().isEmpty) {
+    if (reasonController.text.trim().isEmpty) {
       _err('Enter a reason');
       return;
     }
 
-    setState(() => _submitting = true);
-
-    final selectedEvent = _events.firstWhere(
-      (event) => event['event_id']?.toString() == _selectedEventId,
-      orElse: () => <String, dynamic>{},
-    );
+    setState(() {
+      _submitting = true;
+    });
 
     // Build reason — append file info if attached
-    String reason = _reasonCtrl.text.trim();
+    String reason = reasonController.text.trim();
     if (_fileName != null) {
       reason += '\n[Attachment: $_fileName]';
     }
 
+    final datetime = selectedDateTime!.toIso8601String();
+
     final r = await OdApi.submit(
-      eventName: selectedEvent['event_name']?.toString() ?? _eventCtrl.text.trim(),
-      organiser: selectedEvent['organiser_body']?.toString() ?? _orgCtrl.text.trim(),
-      venue: selectedEvent['venue']?.toString() ?? _venueCtrl.text.trim(),
-      startDate: _fmt(_startDate!),
-      endDate: _fmt(_endDate!),
-      startTime: _fmtTime(_startTime!),
-      endTime: _fmtTime(_endTime!),
+      eventName: eventNameController.text.trim(),
+      datetime: datetime,
+      venue: venueController.text.trim(),
+      organizer: organizerController.text.trim(),
       reason: reason,
-      eventId: _selectedEventId,
       attachmentBase64: _fileBase64,
       attachmentMime: _fileMime,
       attachmentName: _fileName,
@@ -1108,18 +952,13 @@ class _NewODPageState extends State<_NewODPage> {
     if (!mounted) return;
     if (r.ok) {
       setState(() {
-        _selectedEventId = null;
-        _eventCtrl.clear();
-        _orgCtrl.clear();
-        _venueCtrl.clear();
-        _reasonCtrl.clear();
-        _startDate = null;
-        _endDate = null;
-        _startTime = null;
-        _endTime = null;
+        eventNameController.clear();
+        venueController.clear();
+        organizerController.clear();
+        reasonController.clear();
         _fileName = null;
         _fileBase64 = null;
-        _overlapWarning = null;
+        selectedDateTime = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1130,16 +969,57 @@ class _NewODPageState extends State<_NewODPage> {
       // After successful submit, go back to dashboard where the OD is visible.
       widget.onSubmitted?.call();
     } else {
-      _err(r.error ?? 'Submission failed');
+      final message = r.error ?? 'Submission failed';
+      _err(message);
     }
   }
 
-  void _err(String msg) => ScaffoldMessenger.of(context).showSnackBar(
+  void _err(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(msg),
           backgroundColor: Colors.red.shade700,
         ),
       );
+  }
+
+    Future<void> pickDateTime(BuildContext context) async {
+      final date = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime(2024),
+        lastDate: DateTime(2100),
+      );
+
+      if (date == null) return;
+
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.now(),
+      );
+
+      if (time == null) return;
+
+      setState(() {
+        selectedDateTime = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          time.hour,
+          time.minute,
+        );
+      });
+    }
+
+    String _datetimeLabel() {
+      final value = selectedDateTime;
+      if (value == null) return 'No date and time selected';
+      final hour = value.hour.toString().padLeft(2, '0');
+      final minute = value.minute.toString().padLeft(2, '0');
+      final month = value.month.toString().padLeft(2, '0');
+      final day = value.day.toString().padLeft(2, '0');
+      return '${value.year}-$month-$day $hour:$minute';
+    }
 
   @override
   Widget build(BuildContext context) {
@@ -1191,93 +1071,65 @@ class _NewODPageState extends State<_NewODPage> {
                   style: TextStyle(color: Colors.grey, fontSize: 13),
                 ),
                 const SizedBox(height: 18),
-                _eventSelector(),
-                _field('Organiser *', _orgCtrl, 'e.g. IEEE Chennai Section'),
-                _field('Venue *', _venueCtrl, 'e.g. Anna University, Chennai'),
-                // ── Date Range ──────────────────────────────────────────────
-                const Text(
-                  'Date & Time *',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: TextFormField(
+                    controller: eventNameController,
+                    decoration: InputDecoration(
+                      labelText: 'Event Name',
+                      border: const OutlineInputBorder(),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                // Start row
-                Row(
-                  children: [
-                    Expanded(
-                      child: _dateTile(
-                        _startDate == null
-                            ? 'Start Date'
-                            : _displayDate(_startDate!),
-                        Icons.calendar_today,
-                        () => _pickDate(true),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _timeTile(
-                        _startTime == null
-                            ? 'Start Time'
-                            : _displayTime(_startTime!),
-                        Icons.access_time,
-                        () => _pickTime(true),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // End row
-                Row(
-                  children: [
-                    Expanded(
-                      child: _dateTile(
-                        _endDate == null ? 'End Date' : _displayDate(_endDate!),
-                        Icons.calendar_today,
-                        () => _pickDate(false),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _timeTile(
-                        _endTime == null ? 'End Time' : _displayTime(_endTime!),
-                        Icons.access_time,
-                        () => _pickTime(false),
-                      ),
-                    ),
-                  ],
-                ),
-                // Overlap warning
-                if (_checkingOverlap)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Date & Time *',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
                         ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Checking for overlaps…',
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (_overlapWarning != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      _overlapWarning!,
-                      style: const TextStyle(
-                        color: Colors.orange,
-                        fontWeight: FontWeight.w500,
                       ),
-                    ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          onPressed: () => pickDateTime(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: kBlue,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Select Date & Time',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _datetimeLabel(),
+                        style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.72),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
+                ),
+                _field('Venue *', venueController, 'e.g. Anna University, Chennai'),
+                _field('Organizer *', organizerController, 'e.g. IEEE Chennai Section'),
                 const SizedBox(height: 16),
                 // ── File attachment ────────────────────────────────────────
                 const Text(
@@ -1295,7 +1147,7 @@ class _NewODPageState extends State<_NewODPage> {
                 const SizedBox(height: 8),
                 _fileName == null
                     ? GestureDetector(
-                        onTap: _fileLoading ? null : _pickFile,
+                    onTap: _fileLoading ? null : _pickFile,
                         child: Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -1374,7 +1226,7 @@ class _NewODPageState extends State<_NewODPage> {
                 const SizedBox(height: 16),
                 _field(
                   'Reason *',
-                  _reasonCtrl,
+                  reasonController,
                   'Why are you attending?',
                   maxLines: 3,
                 ),
@@ -1459,120 +1311,46 @@ class _NewODPageState extends State<_NewODPage> {
         ),
       );
 
-  Widget _eventSelector() => Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Event *',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (_loadingEvents)
-              const LinearProgressIndicator(minHeight: 2)
-            else if (_eventsError != null)
-              Text(
-                _eventsError!,
-                style: const TextStyle(color: Colors.red, fontSize: 13),
-              )
-            else if (_events.isEmpty)
-              Text(
-                'No events available right now.',
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
-              )
-            else
-              DropdownButtonFormField<String>(
-                initialValue: _selectedEventId,
-                decoration: InputDecoration(
-                  border: _border(Colors.grey),
-                  enabledBorder: _border(Colors.grey),
-                  focusedBorder: _border(kBlue),
-                ),
-                items: _events
-                    .map(
-                      (event) => DropdownMenuItem<String>(
-                        value: event['event_id']?.toString(),
-                        child: Text(
-                          event['event_name']?.toString() ?? 'Untitled event',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _syncEventSelection(value);
-                  });
-                },
-              ),
-          ],
+  Future<void> _pickFile() async {
+    setState(() => _fileLoading = true);
+    final input = html.FileUploadInputElement();
+    input.accept = '.pdf,.jpg,.jpeg,.png';
+    input.click();
+
+    await input.onChange.first;
+    if (input.files == null || input.files!.isEmpty) {
+      setState(() => _fileLoading = false);
+      return;
+    }
+
+    final file = input.files![0];
+    final reader = html.FileReader();
+    reader.readAsDataUrl(file);
+    await reader.onLoad.first;
+
+    final result = reader.result as String;
+    final commaIdx = result.indexOf(',');
+    final base64 = result.substring(commaIdx + 1);
+    final mime = result.substring(5, result.indexOf(';'));
+
+    if (base64.length * 3 / 4 > 5 * 1024 * 1024) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('File too large (max 5 MB)'),
+          backgroundColor: Colors.red,
         ),
       );
+      setState(() => _fileLoading = false);
+      return;
+    }
 
-  Widget _dateTile(
-    String label,
-    IconData icon,
-    VoidCallback onTap,
-  ) =>
-      _pickerTile(
-        label,
-        icon,
-        onTap,
-        label.contains('/') ? kBlue : Colors.grey,
-      );
-
-  Widget _timeTile(
-    String label,
-    IconData icon,
-    VoidCallback onTap,
-  ) =>
-      _pickerTile(
-        label,
-        icon,
-        onTap,
-        label.contains(':') ? kBlue : Colors.grey,
-      );
-
-  Widget _pickerTile(
-    String label,
-    IconData icon,
-    VoidCallback onTap,
-    Color iconColor,
-  ) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 14,
-          ),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade400),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 16, color: iconColor),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: iconColor == Colors.grey
-                        ? Colors.grey
-                        : Colors.black,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+    setState(() {
+      _fileName = file.name;
+      _fileBase64 = base64;
+      _fileMime = mime;
+      _fileLoading = false;
+    });
+  }
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────

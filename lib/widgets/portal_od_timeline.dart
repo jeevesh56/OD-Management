@@ -22,41 +22,37 @@ class OdTimelineStage {
 
 List<OdTimelineStage> odTimelineStagesFromRequest(Map<dynamic, dynamic> r) {
   final status = r['status']?.toString() ?? '';
+  final mentorApproved = r['mentor_approved'] == true;
+  final hodApproved = r['hod_approved'] == true;
+  final principalApproved = r['principal_approved'] == true;
   final created = portalOdShortDate(r['created_at']?.toString() ?? '—');
 
   OdStageState mentorState() {
     if (status == 'MENTOR_REJECTED') return OdStageState.rejected;
-    if (const {
-      'MENTOR_APPROVED',
-      'EC_CONFIRMED',
-      'EC_REJECTED',
-      'HOD_APPROVED',
-      'HOD_REJECTED',
-    }.contains(status)) {
+    if (mentorApproved || hodApproved || principalApproved) {
       return OdStageState.completed;
     }
-    if (status == 'PENDING') return OdStageState.current;
-    return OdStageState.pending;
-  }
-
-  OdStageState ecState() {
-    if (status == 'MENTOR_REJECTED') return OdStageState.pending;
-    if (status == 'EC_REJECTED') return OdStageState.rejected;
-    if (const {'HOD_APPROVED', 'HOD_REJECTED'}.contains(status) ||
-        status == 'EC_CONFIRMED') {
-      return OdStageState.completed;
-    }
-    if (status == 'MENTOR_APPROVED') return OdStageState.current;
+    if (status == 'PENDING' || status == 'Pending') return OdStageState.current;
     return OdStageState.pending;
   }
 
   OdStageState hodState() {
-    if (status == 'HOD_APPROVED') return OdStageState.completed;
+    if (status == 'MENTOR_REJECTED') return OdStageState.pending;
     if (status == 'HOD_REJECTED') return OdStageState.rejected;
-    if (const {'MENTOR_REJECTED', 'EC_REJECTED'}.contains(status)) {
+    if (hodApproved || principalApproved) {
+      return OdStageState.completed;
+    }
+    if (mentorApproved) return OdStageState.current;
+    return OdStageState.pending;
+  }
+
+  OdStageState principalState() {
+    if (status == 'Rejected') return OdStageState.rejected;
+    if (principalApproved || status == 'Approved') return OdStageState.completed;
+    if (const {'MENTOR_REJECTED', 'HOD_REJECTED'}.contains(status)) {
       return OdStageState.pending;
     }
-    if (status == 'EC_CONFIRMED') return OdStageState.current;
+    if (hodApproved) return OdStageState.current;
     return OdStageState.pending;
   }
 
@@ -73,29 +69,29 @@ List<OdTimelineStage> odTimelineStagesFromRequest(Map<dynamic, dynamic> r) {
     }
   }
 
-  String ecSub() {
-    switch (ecState()) {
+  String hodSub() {
+    switch (hodState()) {
       case OdStageState.rejected:
-        return 'Event coordinator rejected';
+        return 'HoD did not approve this request';
       case OdStageState.completed:
-        return 'Event details confirmed';
+        return 'HoD has approved';
       case OdStageState.current:
-        return 'EC confirming event participation';
+        return 'Awaiting HoD review';
       default:
         return 'After mentor approval';
     }
   }
 
-  String hodSub() {
-    switch (hodState()) {
+  String principalSub() {
+    switch (principalState()) {
       case OdStageState.rejected:
-        return 'HoD did not grant OD';
+        return 'Principal rejected the request';
       case OdStageState.completed:
         return 'Final approval granted';
       case OdStageState.current:
-        return 'Awaiting HoD sign-off';
+        return 'Awaiting principal sign-off';
       default:
-        return 'After EC confirmation';
+        return 'After HoD approval';
     }
   }
 
@@ -114,16 +110,16 @@ List<OdTimelineStage> odTimelineStagesFromRequest(Map<dynamic, dynamic> r) {
       state: mentorState(),
     ),
     OdTimelineStage(
-      key: 'ec',
-      title: 'Event coordinator',
-      subtitle: ecSub(),
-      state: ecState(),
-    ),
-    OdTimelineStage(
       key: 'hod',
       title: 'HoD approval',
       subtitle: hodSub(),
       state: hodState(),
+    ),
+    OdTimelineStage(
+      key: 'principal',
+      title: 'Principal approval',
+      subtitle: principalSub(),
+      state: principalState(),
     ),
   ];
 }
