@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_web_libraries_in_flutter
 // dart:html only available on web build — used for file picker
 // ignore: uri_does_not_exist
+// ignore: deprecated_member_use
 import 'dart:html' as html;
 
 import 'package:flutter/material.dart';
@@ -993,6 +994,7 @@ class _NewODPageState extends State<_NewODPage> {
 
       if (date == null) return;
 
+      if (!context.mounted) return;
       final time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.now(),
@@ -1334,6 +1336,7 @@ class _NewODPageState extends State<_NewODPage> {
     final mime = result.substring(5, result.indexOf(';'));
 
     if (base64.length * 3 / 4 > 5 * 1024 * 1024) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('File too large (max 5 MB)'),

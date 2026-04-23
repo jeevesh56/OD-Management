@@ -577,7 +577,7 @@ class _ODRequestsPanel extends StatelessWidget {
   final ValueChanged<List<Map<String, dynamic>>> onBulkApproveGroup;
 
   Map<String, List<Map<String, dynamic>>> _groupByEvent(List<Map<String, dynamic>> data) {
-    final grouped = <String, List<Map<String, dynamic>>{};
+    final grouped = <String, List<Map<String, dynamic>>>{};
 
     for (final item in data) {
       final event = item['event_name']?.toString().trim();
@@ -588,7 +588,7 @@ class _ODRequestsPanel extends StatelessWidget {
     final sortedKeys = grouped.keys.toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-    final sortedMap = <String, List<Map<String, dynamic>>{};
+    final sortedMap = <String, List<Map<String, dynamic>>>{};
     for (final key in sortedKeys) {
       sortedMap[key] = grouped[key]!;
     }
