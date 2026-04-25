@@ -255,7 +255,7 @@ class _Sidebar extends StatelessWidget {
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.09),
+              color: Colors.white.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -343,7 +343,7 @@ class _SidebarItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: Material(
-        color: active ? Colors.white.withOpacity(0.16) : Colors.transparent,
+        color: active ? Colors.white.withValues(alpha: 0.16) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -414,7 +414,7 @@ class _Topbar extends StatelessWidget {
             icon: const Icon(Icons.logout_rounded),
           ),
           CircleAvatar(
-            backgroundColor: kMentorPrimary.withOpacity(0.1),
+            backgroundColor: kMentorPrimary.withValues(alpha: 0.1),
             foregroundColor: kMentorPrimary,
             child: Text(name.substring(0, 1).toUpperCase()),
           ),
@@ -517,7 +517,7 @@ class _StatCard extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.14),
+                color: color.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: color, size: 20),

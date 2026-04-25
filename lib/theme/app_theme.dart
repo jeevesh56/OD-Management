@@ -136,11 +136,11 @@ class AppTheme {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: scheme.error),
         ),
-        hintStyle: TextStyle(color: scheme.onSurface.withOpacity(0.55)),
-        labelStyle: TextStyle(color: scheme.onSurface.withOpacity(0.72)),
+        hintStyle: TextStyle(color: scheme.onSurface.withValues(alpha: 0.55)),
+        labelStyle: TextStyle(color: scheme.onSurface.withValues(alpha: 0.72)),
         floatingLabelStyle: TextStyle(color: scheme.primary),
-        prefixIconColor: scheme.onSurface.withOpacity(0.82),
-        suffixIconColor: scheme.onSurface.withOpacity(0.82),
+        prefixIconColor: scheme.onSurface.withValues(alpha: 0.82),
+        suffixIconColor: scheme.onSurface.withValues(alpha: 0.82),
       ),
       dataTableTheme: DataTableThemeData(
         decoration: BoxDecoration(
@@ -163,7 +163,7 @@ class AppTheme {
         dataRowMaxHeight: 64,
         dataRowColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.hovered)) {
-            return scheme.primary.withOpacity(isDark ? 0.16 : 0.06);
+            return scheme.primary.withValues(alpha: isDark ? 0.16 : 0.06);
           }
           return Colors.transparent;
         }),
@@ -172,8 +172,8 @@ class AppTheme {
         backgroundColor: scheme.surface,
         selectedIconTheme: IconThemeData(color: scheme.primary),
         selectedLabelTextStyle: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700),
-        unselectedIconTheme: IconThemeData(color: scheme.onSurface.withOpacity(0.7)),
-        unselectedLabelTextStyle: TextStyle(color: scheme.onSurface.withOpacity(0.7)),
+        unselectedIconTheme: IconThemeData(color: scheme.onSurface.withValues(alpha: 0.7)),
+        unselectedLabelTextStyle: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7)),
       ),
     );
 
@@ -186,7 +186,7 @@ class AppTheme {
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: scheme.surface,
         selectedItemColor: scheme.primary,
-        unselectedItemColor: scheme.onSurface.withOpacity(0.65),
+        unselectedItemColor: scheme.onSurface.withValues(alpha: 0.65),
         type: BottomNavigationBarType.fixed,
       ),
       cardTheme: CardThemeData(
@@ -197,7 +197,7 @@ class AppTheme {
       ),
       textSelectionTheme: TextSelectionThemeData(
         cursorColor: scheme.primary,
-        selectionColor: scheme.primary.withOpacity(isDark ? 0.36 : 0.24),
+        selectionColor: scheme.primary.withValues(alpha: isDark ? 0.36 : 0.24),
         selectionHandleColor: scheme.primary,
       ),
     );

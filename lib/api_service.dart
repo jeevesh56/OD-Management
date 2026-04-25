@@ -7,11 +7,11 @@ import 'package:http/http.dart' as http;
 const Color kBlue = Color(0xFF1565C0);
 const Color kRed = Color(0xFFB71C1C);
 
-// ── Change this to your Flask server IP ──────────────────────────────────────
+// ── Local Flask backend URLs ─────────────────────────────────────────────────
 // Chrome (web):        http://127.0.0.1:5000
 // Android emulator:   http://10.0.2.2:5000
 // Real phone on WiFi: http://192.168.x.x:5000  ← your PC's local IP
-const String baseUrl = "https://your-app.onrender.com";
+const String baseUrl = "http://127.0.0.1:5000";
 const String kBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
   defaultValue: baseUrl,

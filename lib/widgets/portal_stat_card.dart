@@ -39,7 +39,7 @@ class PortalStatCard extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: scheme.onSurface.withOpacity(0.72), fontSize: 11),
+            style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.72), fontSize: 11),
           ),
           const SizedBox(height: 4),
           Text(

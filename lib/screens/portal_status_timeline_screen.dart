@@ -87,7 +87,7 @@ class PortalStatusTimelineScreen extends StatelessWidget {
                             Text(
                               schedule,
                               style: TextStyle(
-                                color: scheme.onSurface.withOpacity(0.72),
+                                color: scheme.onSurface.withValues(alpha: 0.72),
                                 fontSize: 14,
                               ),
                             ),
@@ -102,7 +102,7 @@ class PortalStatusTimelineScreen extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: scheme.onSurface.withOpacity(0.72),
+                      color: scheme.onSurface.withValues(alpha: 0.72),
                       letterSpacing: 0.3,
                     ),
                   ),

@@ -8,18 +8,20 @@ class VerifierScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         automaticallyImplyLeading: false,
-        title: const Text(
+        title: Text(
           'Scan Student ID',
-          style: TextStyle(color: Colors.white),
+          style: textTheme.titleLarge,
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
+            icon: Icon(Icons.logout, color: Theme.of(context).iconTheme.color),
             onPressed: () {
               AuthStore.clear();
               Navigator.pushReplacement(
@@ -36,20 +38,21 @@ class VerifierScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.qr_code_scanner, size: 120, color: Colors.white),
+            Icon(Icons.qr_code_scanner, size: 120, color: Theme.of(context).iconTheme.color),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               'QR Scanner',
-              style: TextStyle(
+              style: textTheme.titleLarge?.copyWith(
                 fontSize: 24,
-                color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Point at the QR code on student ID card',
-              style: TextStyle(color: Colors.white70),
+              style: textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurface.withValues(alpha: 0.72),
+              ),
             ),
             const SizedBox(height: 48),
             ElevatedButton.icon(

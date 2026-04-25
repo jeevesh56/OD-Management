@@ -45,9 +45,9 @@ class _WavyCursorBackgroundState extends State<WavyCursorBackground> {
                     1,
                   ),
                   colors: [
-                    Colors.purpleAccent.withOpacity(0.25),
-                    Colors.blueAccent.withOpacity(0.20),
-                    Colors.pinkAccent.withOpacity(0.18),
+                    Colors.purpleAccent.withValues(alpha: 0.25),
+                    Colors.blueAccent.withValues(alpha: 0.20),
+                    Colors.pinkAccent.withValues(alpha: 0.18),
                     Colors.transparent,
                   ],
                   stops: const [0.0, 0.3, 0.6, 1.0],

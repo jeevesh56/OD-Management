@@ -61,13 +61,16 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFD3D3D3),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Center(
         child: Container(
           width: 960,
           height: 540,
           decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(20),
           ),
           clipBehavior: Clip.antiAlias,
@@ -76,7 +79,7 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
               // LEFT SIDE (same as login)
               Expanded(
                 child: Container(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -86,20 +89,19 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
                         fit: BoxFit.contain,
                       ),
                       const SizedBox(height: 22),
-                      const Text(
+                      Text(
                         "OD Management System",
-                        style: TextStyle(
+                        style: textTheme.titleLarge?.copyWith(
                           fontSize: 30,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF071B3B),
                         ),
                       ),
                       const SizedBox(height: 10),
-                      const Text(
+                      Text(
                         "OD Requests Made Simple",
-                        style: TextStyle(
+                        style: textTheme.bodyMedium?.copyWith(
                           fontSize: 18,
-                          color: Colors.black45,
+                          color: scheme.onSurface.withValues(alpha: 0.72),
                         ),
                       ),
                     ],
@@ -168,6 +170,7 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFF0F9D),
+                            foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -226,7 +229,7 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
     return Container(
       height: 44,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.55),
+        color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(8),
       ),
       child: TextField(
@@ -240,7 +243,7 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
           LengthLimitingTextInputFormatter(_passwordLength),
         ],
         style: TextStyle(
-          color: Colors.black87,
+          color: Colors.white.withValues(alpha: 0.98),
           fontSize: 14,
         ),
         decoration: InputDecoration(
@@ -249,13 +252,13 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
             horizontal: 12,
             vertical: 12,
           ),
-          prefixIcon: const Icon(Icons.lock_outline, color: Colors.black54, size: 20),
+          prefixIcon: const Icon(Icons.lock_outline, color: Colors.white70, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(color: Colors.black54, fontSize: 14),
+          hintStyle: const TextStyle(color: Colors.white70, fontSize: 14),
           suffixIcon: IconButton(
             icon: Icon(
               obscure ? Icons.visibility_off : Icons.visibility,
-              color: Colors.black54,
+              color: Colors.white70,
               size: 22,
             ),
             onPressed: onToggle,
@@ -274,7 +277,7 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
     return Container(
       height: 44,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.55),
+        color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(8),
       ),
       child: TextField(
@@ -287,7 +290,7 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
             ? TextInputType.emailAddress
             : TextInputType.text,
         style: TextStyle(
-          color: Colors.black87,
+          color: Colors.white.withValues(alpha: 0.98),
           fontSize: 14,
         ),
         decoration: InputDecoration(
@@ -296,9 +299,9 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
             horizontal: 12,
             vertical: 12,
           ),
-          prefixIcon: Icon(icon, color: Colors.black54, size: 20),
+          prefixIcon: Icon(icon, color: Colors.white70, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(color: Colors.black54, fontSize: 14),
+          hintStyle: const TextStyle(color: Colors.white70, fontSize: 14),
         ),
       ),
     );

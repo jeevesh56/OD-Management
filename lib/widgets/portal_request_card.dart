@@ -123,11 +123,11 @@ class PortalRequestCard extends StatelessWidget {
                 children: [
                   Text(
                     schedule,
-                    style: TextStyle(color: scheme.onSurface.withOpacity(0.72), fontSize: 14),
+                    style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.72), fontSize: 14),
                   ),
                   const Spacer(),
                   Icon(Icons.chevron_right_rounded,
-                      color: scheme.onSurface.withOpacity(0.35)),
+                      color: scheme.onSurface.withValues(alpha: 0.35)),
                 ],
               ),
               const SizedBox(height: 12),

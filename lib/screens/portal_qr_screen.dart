@@ -78,7 +78,7 @@ class PortalQrScreen extends StatelessWidget {
                     'Show this at the verification desk',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: scheme.onSurface.withOpacity(0.72),
+                      color: scheme.onSurface.withValues(alpha: 0.72),
                       fontSize: 15,
                     ),
                   ),
@@ -122,7 +122,7 @@ class PortalQrScreen extends StatelessWidget {
                         Text(
                           'Reg. No: $reg',
                           style: TextStyle(
-                            color: scheme.onSurface.withOpacity(0.72),
+                            color: scheme.onSurface.withValues(alpha: 0.72),
                             fontSize: 15,
                           ),
                         ),

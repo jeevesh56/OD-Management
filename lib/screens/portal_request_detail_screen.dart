@@ -222,7 +222,7 @@ class PortalRequestDetailScreen extends StatelessWidget {
                             Text(
                               'Track each stage of your OD approval.',
                               style: TextStyle(
-                                color: scheme.onSurface.withOpacity(0.72),
+                                color: scheme.onSurface.withValues(alpha: 0.72),
                                 fontSize: 13,
                               ),
                             ),

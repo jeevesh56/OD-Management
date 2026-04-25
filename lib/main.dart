@@ -9,11 +9,14 @@ void main() {
 
 class ThemeController {
   static final ValueNotifier<ThemeMode> mode =
-      ValueNotifier<ThemeMode>(ThemeMode.light);
+      ValueNotifier<ThemeMode>(ThemeMode.system);
 
   static void toggle() {
-    mode.value =
-        mode.value == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    mode.value = switch (mode.value) {
+      ThemeMode.system => ThemeMode.light,
+      ThemeMode.light => ThemeMode.dark,
+      ThemeMode.dark => ThemeMode.system,
+    };
   }
 }
 

@@ -45,20 +45,25 @@ class _ODLoginUIState extends State<ODLoginUI> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFD3D3D3),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Center(
         child: Container(
           width: 960,
           height: 540,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(20),
+          ),
           clipBehavior: Clip.antiAlias,
           child: Row(
             children: [
               // LEFT SIDE
               Expanded(
                 child: Container(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -68,18 +73,20 @@ class _ODLoginUIState extends State<ODLoginUI> {
                         fit: BoxFit.contain,
                       ),
                       const SizedBox(height: 22),
-                      const Text(
+                      Text(
                         "OD Management System",
-                        style: TextStyle(
+                        style: textTheme.titleLarge?.copyWith(
                           fontSize: 30,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF071B3B),
                         ),
                       ),
                       const SizedBox(height: 10),
-                      const Text(
+                      Text(
                         "OD Requests Made Simple",
-                        style: TextStyle(fontSize: 18, color: Colors.black45),
+                        style: textTheme.bodyMedium?.copyWith(
+                          fontSize: 18,
+                          color: scheme.onSurface.withValues(alpha: 0.72),
+                        ),
                       ),
                     ],
                   ),
@@ -139,7 +146,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
                         _welcomeUsername != null && _welcomeUsername!.isNotEmpty
                             ? "Welcome, $_welcomeUsername"
                             : "Welcome",
-                        style: const TextStyle(
+                        style: textTheme.titleLarge?.copyWith(
                           fontSize: 28,
                           color: Colors.white,
                           fontWeight: FontWeight.w500,
@@ -161,6 +168,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFF0F9D),
+                            foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -266,7 +274,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
     return Container(
       height: 40,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
+        color: Colors.black.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -322,7 +330,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
     return Container(
       height: 44,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.55),
+        color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(8),
       ),
       child: TextField(
@@ -330,7 +338,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         obscureText: _obscurePassword,
         autofillHints: const [AutofillHints.password],
         style: TextStyle(
-          color: Colors.black87,
+          color: Colors.white.withValues(alpha: 0.98),
           fontSize: 14,
         ),
         decoration: InputDecoration(
@@ -339,13 +347,13 @@ class _ODLoginUIState extends State<ODLoginUI> {
             horizontal: 12,
             vertical: 12,
           ),
-          prefixIcon: const Icon(Icons.lock_outline, color: Colors.black54, size: 20),
+          prefixIcon: const Icon(Icons.lock_outline, color: Colors.white70, size: 20),
           hintText: "Password",
-          hintStyle: const TextStyle(color: Colors.black54, fontSize: 14),
+          hintStyle: const TextStyle(color: Colors.white70, fontSize: 14),
           suffixIcon: IconButton(
             icon: Icon(
               _obscurePassword ? Icons.visibility_off : Icons.visibility,
-              color: Colors.black54,
+              color: Colors.white70,
               size: 22,
             ),
             onPressed: () {
@@ -366,7 +374,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
     return Container(
       height: 44,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.55),
+        color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(8),
       ),
       child: TextField(
@@ -379,7 +387,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
             ? TextInputType.emailAddress
             : TextInputType.text,
         style: TextStyle(
-          color: Colors.black87,
+          color: Colors.white.withValues(alpha: 0.98),
           fontSize: 14,
         ),
         decoration: InputDecoration(
@@ -388,9 +396,9 @@ class _ODLoginUIState extends State<ODLoginUI> {
             horizontal: 12,
             vertical: 12,
           ),
-          prefixIcon: Icon(icon, color: Colors.black54, size: 20),
+          prefixIcon: Icon(icon, color: Colors.white70, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(color: Colors.black54, fontSize: 14),
+          hintStyle: const TextStyle(color: Colors.white70, fontSize: 14),
         ),
       ),
     );

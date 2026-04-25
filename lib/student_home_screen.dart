@@ -159,7 +159,7 @@ class _StudentSidebar extends StatelessWidget {
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.09),
+              color: Colors.white.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -253,7 +253,7 @@ class _StudentSidebarItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: Material(
-        color: active ? Colors.white.withOpacity(0.16) : Colors.transparent,
+        color: active ? Colors.white.withValues(alpha: 0.16) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -325,7 +325,7 @@ class _StudentTopbar extends StatelessWidget {
             icon: const Icon(Icons.logout_rounded),
           ),
           CircleAvatar(
-            backgroundColor: kStudentPrimary.withOpacity(0.1),
+            backgroundColor: kStudentPrimary.withValues(alpha: 0.1),
             foregroundColor: kStudentPrimary,
             child: Text(name.substring(0, 1).toUpperCase()),
           ),
@@ -512,7 +512,7 @@ class _DashboardState extends State<_Dashboard> {
                                 welcomeSub,
                                 style: TextStyle(
                                   fontSize: 15,
-                                  color: scheme.onSurface.withOpacity(0.72),
+                                  color: scheme.onSurface.withValues(alpha: 0.72),
                                 ),
                               ),
                               const SizedBox(height: 20),
@@ -524,7 +524,7 @@ class _DashboardState extends State<_Dashboard> {
                                   padding: const EdgeInsets.all(14),
                                   decoration: BoxDecoration(
                                     color: scheme.secondaryContainer,
-                                    border: Border.all(color: scheme.secondary.withOpacity(0.5)),
+                                    border: Border.all(color: scheme.secondary.withValues(alpha: 0.5)),
                                     borderRadius: BorderRadius.circular(16),
                                   ),
                                   child: Row(
@@ -550,12 +550,12 @@ class _DashboardState extends State<_Dashboard> {
                                   decoration: portalCardDecoration(context, radius: 16),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.info_outline, color: scheme.onSurface.withOpacity(0.72)),
+                                      Icon(Icons.info_outline, color: scheme.onSurface.withValues(alpha: 0.72)),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
                                           'No active OD session',
-                                          style: TextStyle(color: scheme.onSurface.withOpacity(0.72)),
+                                          style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.72)),
                                         ),
                                       ),
                                     ],
@@ -835,7 +835,7 @@ class _DashboardState extends State<_Dashboard> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.14),
+                    color: statusColor.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -1048,7 +1048,7 @@ class _NewODPageState extends State<_NewODPage> {
                   Text(
                     'Mentor → HoD',
                     style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.72),
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
                       fontSize: 15,
                     ),
                   ),
@@ -1123,7 +1123,7 @@ class _NewODPageState extends State<_NewODPage> {
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.72),
+                              .withValues(alpha: 0.72),
                           fontSize: 13,
                         ),
                       ),
@@ -1155,12 +1155,12 @@ class _NewODPageState extends State<_NewODPage> {
                           padding: const EdgeInsets.symmetric(vertical: 20),
                           decoration: BoxDecoration(
                             border: Border.all(
-                              color: kBlue.withOpacity(0.4),
+                              color: kBlue.withValues(alpha: 0.4),
                               style: BorderStyle.solid,
                               width: 1.5,
                             ),
                             borderRadius: BorderRadius.circular(12),
-                            color: kBlue.withOpacity(0.03),
+                            color: kBlue.withValues(alpha: 0.03),
                           ),
                           child: _fileLoading
                               ? const Center(child: CircularProgressIndicator())

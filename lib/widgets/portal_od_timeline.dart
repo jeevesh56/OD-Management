@@ -189,7 +189,7 @@ class _TimelineRow extends StatelessWidget {
           scheme.surfaceContainerHigh,
           scheme.outline,
           Icons.schedule_rounded,
-          scheme.onSurface.withOpacity(0.65),
+          scheme.onSurface.withValues(alpha: 0.65),
         ),
     };
 
@@ -248,7 +248,7 @@ class _TimelineRow extends StatelessWidget {
                   Text(
                     stage.subtitle,
                     style: TextStyle(
-                      color: scheme.onSurface.withOpacity(0.72),
+                      color: scheme.onSurface.withValues(alpha: 0.72),
                       fontSize: compact ? 13 : 14,
                       height: 1.35,
                     ),
