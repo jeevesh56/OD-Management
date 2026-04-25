@@ -16,4 +16,15 @@ abstract class DocumentStore {
     required String field,
     required dynamic isEqualTo,
   });
+
+  Stream<Map<String, dynamic>?> watchDocument({
+    required String collection,
+    required String id,
+  });
+
+  Stream<List<Map<String, dynamic>>> watchQuery({
+    required String collection,
+    required String field,
+    required dynamic isEqualTo,
+  });
 }

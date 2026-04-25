@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -6,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
+import 'widgets/role_profile_widgets.dart';
 
 const Color kHoDPrimary = Color(0xFF0F3D91);
 const Color kHoDAccent = Color(0xFF0E9F6E);
@@ -29,7 +29,6 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
   List<Map<String, dynamic>> _requests = [];
   List<Map<String, dynamic>> _sessions = [];
   Map<String, dynamic> _analytics = const {};
-  Timer? _autoRefreshTimer;
 
   List<Map<String, dynamic>> _mapList(dynamic data) {
     if (data is! List) return const [];
@@ -43,32 +42,24 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
   void initState() {
     super.initState();
     _loadAll();
-    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (mounted && !_busy) {
-        _loadAll(silent: true);
-      }
-    });
   }
 
   @override
   void dispose() {
-    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadAll({bool silent = false}) async {
+  Future<void> _loadAll() async {
     if (_busy) return;
     _busy = true;
     if (!mounted) {
       _busy = false;
       return;
     }
-    if (!silent) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     final results = await Future.wait([
       HoDApi.queue(),
@@ -85,9 +76,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
     final sessionsRes = results[2] as ApiResult<dynamic>;
 
     setState(() {
-      if (!silent) {
-        _loading = false;
-      }
+      _loading = false;
       if (queueRes.ok) {
         _requests = _mapList(queueRes.data);
       } else {
@@ -187,7 +176,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: kHoDBg,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       drawer: desktop
           ? null
           : Drawer(
@@ -251,7 +240,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
       case 2:
         return 'OD Requests';
       case 3:
-        return 'Settings';
+        return 'Profile';
       default:
         return 'Dashboard';
     }
@@ -269,7 +258,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
       case 2:
         return _EventsPanel(sessions: _sessions, requests: _requests);
       case 3:
-        return _SettingsPanel(onLogout: _logout);
+        return _ProfilePanel(onLogout: _logout);
       default:
         return _DashboardPanel(
           requests: _requests,
@@ -291,6 +280,11 @@ class _Sidebar extends StatelessWidget {
     final name = AuthStore.fullName ?? 'HoD';
     final dept = AuthStore.userDepartment ?? 'Department';
     final initials = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'H';
+    final roleLabel = (AuthStore.role ?? 'hod').toLowerCase() == 'mentor'
+        ? 'Mentor Panel'
+        : (AuthStore.role ?? 'hod').toLowerCase() == 'principal'
+            ? 'Principal Panel'
+            : 'HOD Panel';
 
     return Container(
       color: kHoDSidebar,
@@ -311,8 +305,8 @@ class _Sidebar extends StatelessWidget {
                   child: const Icon(Icons.school, color: Colors.white),
                 ),
                 const SizedBox(width: 12),
-                const Text(
-                  'OD Admin',
+                Text(
+                  roleLabel,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -384,8 +378,8 @@ class _Sidebar extends StatelessWidget {
             onTap: () => onTap(2),
           ),
           _SidebarItem(
-            icon: Icons.settings_rounded,
-            label: 'Settings',
+            icon: Icons.person_rounded,
+            label: 'Profile',
             active: current == 3,
             onTap: () => onTap(3),
           ),
@@ -521,131 +515,56 @@ class _DashboardPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pendingCount = requests
-        .where((e) => (e['status']?.toString() ?? '') == 'Pending')
+    final name = AuthStore.fullName ?? 'HoD';
+    final dept = AuthStore.userDepartment ?? 'Department';
+    final totalCount = requests.length;
+    final approvedCount = requests
+        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'approved')
         .length;
-    final total = (analytics['total'] ?? requests.length).toString();
-    final approved = (analytics['approved'] ?? 0).toString();
-    final pending = (analytics['pending'] ?? pendingCount).toString();
-    final rejected = (analytics['rejected'] ?? 0).toString();
-    final activeNow = (analytics['active_now'] ?? sessions.length).toString();
+    final rejectedCount = requests
+        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'rejected')
+        .length;
+    final pendingCount = requests
+        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'pending')
+        .length;
+    final total = totalCount.toString();
+    final approved = approvedCount.toString();
+    final pending = pendingCount.toString();
+    final rejected = rejectedCount.toString();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 14,
-          runSpacing: 14,
-          children: [
-            _StatCard(
-              label: 'Total Requests',
+        RoleProfileCard(
+          name: name,
+          role: 'Head of Department',
+          subtitle: dept,
+        ),
+        DashboardStatGrid(
+          items: [
+            DashboardStatItem(
+              title: 'Total Requests',
               value: total,
-              icon: Icons.stacked_bar_chart_rounded,
-              color: kHoDPrimary,
+              accentColor: Colors.blue,
             ),
-            _StatCard(
-              label: 'Approved',
+            DashboardStatItem(
+              title: 'Approved',
               value: approved,
-              icon: Icons.check_circle_rounded,
-              color: kHoDAccent,
+              accentColor: Colors.green,
             ),
-            _StatCard(
-              label: 'Pending',
+            DashboardStatItem(
+              title: 'Pending',
               value: pending,
-              icon: Icons.hourglass_bottom_rounded,
-              color: const Color(0xFFE69B00),
+              accentColor: Colors.orange,
             ),
-            _StatCard(
-              label: 'Rejected',
+            DashboardStatItem(
+              title: 'Rejected',
               value: rejected,
-              icon: Icons.cancel_rounded,
-              color: const Color(0xFFC62828),
-            ),
-            _StatCard(
-              label: 'Active Sessions',
-              value: activeNow,
-              icon: Icons.flash_on_rounded,
-              color: const Color(0xFF8E24AA),
+              accentColor: Colors.red,
             ),
           ],
-        ),
-        const SizedBox(height: 18),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE6ECF5)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '$pendingCount participant requests are waiting for principal approval after HoD sign-off',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: null,
-                icon: const Icon(Icons.admin_panel_settings_rounded),
-                style: FilledButton.styleFrom(backgroundColor: kHoDPrimary),
-                label: const Text('Bulk Approve (Principal)'),
-              ),
-            ],
-          ),
         ),
       ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 210,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE6ECF5)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 2),
-            Text(label, style: const TextStyle(color: Color(0xFF60708A))),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -912,8 +831,8 @@ class _EventsPanel extends StatelessWidget {
   }
 }
 
-class _SettingsPanel extends StatelessWidget {
-  const _SettingsPanel({required this.onLogout});
+class _ProfilePanel extends StatelessWidget {
+  const _ProfilePanel({required this.onLogout});
 
   final VoidCallback onLogout;
 
@@ -922,56 +841,11 @@ class _SettingsPanel extends StatelessWidget {
     final name = AuthStore.fullName ?? 'HoD';
     final dept = AuthStore.userDepartment ?? 'Department';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6ECF5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Profile',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 14),
-          _settingRow('Name', name),
-          _settingRow('Role', 'Head of Department'),
-          _settingRow('Department', dept),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: onLogout,
-            icon: const Icon(Icons.logout, color: Colors.red),
-            label: const Text('Logout', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _settingRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: const TextStyle(color: Color(0xFF66768F)),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
+    return RoleProfilePage(
+      name: name,
+      role: 'HOD',
+      department: dept,
+      onLogout: onLogout,
     );
   }
 }

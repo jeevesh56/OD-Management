@@ -327,39 +327,38 @@ class _ODLoginUIState extends State<ODLoginUI> {
   }
 
   Widget _passwordField() {
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: TextField(
-        controller: _passwordController,
-        obscureText: _obscurePassword,
-        autofillHints: const [AutofillHints.password],
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.98),
-          fontSize: 14,
+    return TextField(
+      controller: _passwordController,
+      obscureText: _obscurePassword,
+      autofillHints: const [AutofillHints.password],
+      style: const TextStyle(color: Colors.black, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: "Password",
+        labelStyle: const TextStyle(color: Colors.black),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
         ),
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 12,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF0F3D91), width: 1.2),
+        ),
+        prefixIcon: const Icon(Icons.lock_outline, color: Colors.black54, size: 20),
+        suffixIcon: IconButton(
+          icon: Icon(
+            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+            color: Colors.black54,
+            size: 22,
           ),
-          prefixIcon: const Icon(Icons.lock_outline, color: Colors.white70, size: 20),
-          hintText: "Password",
-          hintStyle: const TextStyle(color: Colors.white70, fontSize: 14),
-          suffixIcon: IconButton(
-            icon: Icon(
-              _obscurePassword ? Icons.visibility_off : Icons.visibility,
-              color: Colors.white70,
-              size: 22,
-            ),
-            onPressed: () {
-              setState(() => _obscurePassword = !_obscurePassword);
-            },
-          ),
+          onPressed: () {
+            setState(() => _obscurePassword = !_obscurePassword);
+          },
         ),
       ),
     );
@@ -371,35 +370,34 @@ class _ODLoginUIState extends State<ODLoginUI> {
     bool obscureText, {
     TextEditingController? controller,
   }) {
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscureText,
-        autofillHints: hint == "College Email"
-            ? const [AutofillHints.username, AutofillHints.email]
-            : null,
-        keyboardType: hint == "College Email"
-            ? TextInputType.emailAddress
-            : TextInputType.text,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.98),
-          fontSize: 14,
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      autofillHints: hint == "College Email"
+          ? const [AutofillHints.username, AutofillHints.email]
+          : null,
+      keyboardType: hint == "College Email"
+          ? TextInputType.emailAddress
+          : TextInputType.text,
+      style: const TextStyle(color: Colors.black, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: hint,
+        labelStyle: const TextStyle(color: Colors.black),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
         ),
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 12,
-          ),
-          prefixIcon: Icon(icon, color: Colors.white70, size: 20),
-          hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white70, fontSize: 14),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
         ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF0F3D91), width: 1.2),
+        ),
+        prefixIcon: Icon(icon, color: Colors.black54, size: 20),
       ),
     );
   }

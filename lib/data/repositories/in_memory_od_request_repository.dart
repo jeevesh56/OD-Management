@@ -14,8 +14,18 @@ class InMemoryOdRequestRepository implements OdRequestRepository {
   Future<OdRequest?> getById(String requestId) async => _requests[requestId];
 
   @override
+  Stream<OdRequest?> watchById(String requestId) async* {
+    yield _requests[requestId];
+  }
+
+  @override
   Future<List<OdRequest>> getByStudent(String studentId) async {
     return _requests.values.where((item) => item.studentId == studentId).toList();
+  }
+
+  @override
+  Stream<List<OdRequest>> watchByStudent(String studentId) async* {
+    yield await getByStudent(studentId);
   }
 
   @override
@@ -23,6 +33,11 @@ class InMemoryOdRequestRepository implements OdRequestRepository {
     return _requests.values
         .where((item) => item.status == OdStatus.pending)
         .toList();
+  }
+
+  @override
+  Stream<List<OdRequest>> watchPendingForRole(String roleScope) async* {
+    yield await getPendingForRole(roleScope);
   }
 
   @override

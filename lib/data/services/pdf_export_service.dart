@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'document_store.dart';
+import 'firestore_paths.dart';
 
 class PdfExportService {
   const PdfExportService(this._store);
@@ -50,7 +51,7 @@ class PdfExportService {
     final bytes = await doc.save();
 
     await _store.set(
-      collection: 'pdf_exports',
+      collection: FirestorePaths.pdfExports,
       id: '${requestId}_${DateTime.now().millisecondsSinceEpoch}',
       data: {
         'request_id': requestId,

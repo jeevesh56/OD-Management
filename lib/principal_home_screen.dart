@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
+import 'widgets/role_profile_widgets.dart';
 
 const Color kPrincipalPrimary = Color(0xFF1257B0);
 const Color kPrincipalAccent = Color(0xFF0E9F6E);
@@ -163,7 +164,7 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: kPrincipalBg,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       drawer: desktop
           ? null
           : Drawer(child: _Sidebar(current: _section, onTap: _onTapSection)),
@@ -216,7 +217,7 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   String _titleForSection(int section) {
     switch (section) {
       case 2:
-        return 'Settings';
+        return 'Profile';
       case 0:
         return 'Dashboard';
       default:
@@ -229,7 +230,7 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
       case 0:
         return _DashboardPanel(queue: _queue);
       case 2:
-        return _SettingsPanel(onLogout: _logout);
+        return _ProfilePanel(onLogout: _logout);
       default:
         return _ODRequestsPanel(
           rows: _queue,
@@ -254,20 +255,25 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = AuthStore.fullName ?? 'Principal';
     final dept = AuthStore.userDepartment ?? 'Department';
+    final roleLabel = (AuthStore.role ?? 'principal').toLowerCase() == 'mentor'
+        ? 'Mentor Panel'
+        : (AuthStore.role ?? 'principal').toLowerCase() == 'hod'
+            ? 'HOD Panel'
+            : 'Principal Panel';
 
     return Container(
       color: kPrincipalSidebar,
       child: Column(
         children: [
           const SizedBox(height: 20),
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
                 Icon(Icons.auto_graph_rounded, color: Colors.white),
                 SizedBox(width: 10),
                 Text(
-                  'Principal Panel',
+                  roleLabel,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -333,8 +339,8 @@ class _Sidebar extends StatelessWidget {
             onTap: () => onTap(1),
           ),
           _SidebarItem(
-            icon: Icons.settings_rounded,
-            label: 'Settings',
+            icon: Icons.person_rounded,
+            label: 'Profile',
             active: current == 2,
             onTap: () => onTap(2),
           ),
@@ -462,32 +468,48 @@ class _DashboardPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pending = queue.length;
+    final name = AuthStore.fullName ?? 'Principal';
+    final dept = AuthStore.userDepartment ?? 'Department';
+    final total = queue.length;
+    final approved = queue
+        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'approved')
+        .length;
+    final rejected = queue
+        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'rejected')
+        .length;
+    final pending = queue
+        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'pending')
+        .length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 14,
-          runSpacing: 14,
-          children: [
-            _StatCard(
-              label: 'Pending Reviews',
+        RoleProfileCard(
+          name: name,
+          role: 'Principal',
+          subtitle: dept,
+        ),
+        DashboardStatGrid(
+          items: [
+            DashboardStatItem(
+              title: 'Total Requests',
+              value: total.toString(),
+              accentColor: Colors.blue,
+            ),
+            DashboardStatItem(
+              title: 'Approved',
+              value: approved.toString(),
+              accentColor: Colors.green,
+            ),
+            DashboardStatItem(
+              title: 'Pending',
               value: pending.toString(),
-              icon: Icons.pending_actions_rounded,
-              color: kPrincipalPrimary,
+              accentColor: Colors.orange,
             ),
-            _StatCard(
-              label: 'Approved Today',
-              value: '—',
-              icon: Icons.check_circle_rounded,
-              color: kPrincipalAccent,
-            ),
-            _StatCard(
-              label: 'Rejected Today',
-              value: '—',
-              icon: Icons.cancel_rounded,
-              color: const Color(0xFFC62828),
+            DashboardStatItem(
+              title: 'Rejected',
+              value: rejected.toString(),
+              accentColor: Colors.red,
             ),
           ],
         ),
@@ -506,53 +528,6 @@ class _DashboardPanel extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 220,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE6ECF5)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(height: 12),
-            Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 2),
-            Text(label, style: const TextStyle(color: Color(0xFF60708A))),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -882,8 +857,8 @@ class _ODRequestCard extends StatelessWidget {
   }
 }
 
-class _SettingsPanel extends StatelessWidget {
-  const _SettingsPanel({required this.onLogout});
+class _ProfilePanel extends StatelessWidget {
+  const _ProfilePanel({required this.onLogout});
 
   final VoidCallback onLogout;
 
@@ -892,56 +867,11 @@ class _SettingsPanel extends StatelessWidget {
     final name = AuthStore.fullName ?? 'Principal';
     final dept = AuthStore.userDepartment ?? 'Department';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6ECF5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Profile',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 14),
-          _settingRow('Name', name),
-          _settingRow('Role', 'Principal'),
-          _settingRow('Department', dept),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: onLogout,
-            icon: const Icon(Icons.logout, color: Colors.red),
-            label: const Text('Logout', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _settingRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: const TextStyle(color: Color(0xFF66768F)),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
+    return RoleProfilePage(
+      name: name,
+      role: 'Principal',
+      department: dept,
+      onLogout: onLogout,
     );
   }
 }

@@ -44,4 +44,32 @@ class FirebaseDocumentStore implements DocumentStore {
         .doc(id)
         .set(data, SetOptions(merge: merge));
   }
+
+  @override
+  Stream<Map<String, dynamic>?> watchDocument({
+    required String collection,
+    required String id,
+  }) {
+    return _firestore.collection(collection).doc(id).snapshots().map((snap) {
+      if (!snap.exists) return null;
+      return {'id': snap.id, ...(snap.data() ?? <String, dynamic>{})};
+    });
+  }
+
+  @override
+  Stream<List<Map<String, dynamic>>> watchQuery({
+    required String collection,
+    required String field,
+    required dynamic isEqualTo,
+  }) {
+    return _firestore
+        .collection(collection)
+        .where(field, isEqualTo: isEqualTo)
+        .snapshots()
+        .map(
+          (snaps) => snaps.docs
+              .map((doc) => {'id': doc.id, ...(doc.data())})
+              .toList(growable: false),
+        );
+  }
 }

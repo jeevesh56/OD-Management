@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return signedIn() && currentUser().role == role;
+    }
+
+    function isAdminLike() {
+      return hasRole('admin') || hasRole('principal');
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || isAdminLike());
+      allow create: if signedIn() && uid == request.auth.uid;
+      allow update: if signedIn() && (uid == request.auth.uid || isAdminLike());
+      allow delete: if isAdminLike();
+    }
+
+    match /od_requests/{requestId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && (hasRole('student') || hasRole('ec'));
+      allow update: if signedIn() && (
+        isAdminLike() ||
+        hasRole('mentor') ||
+        hasRole('hod') ||
+        hasRole('principal')
+      );
+    }
+
+    match /approvals/{approvalId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && (
+        hasRole('mentor') || hasRole('hod') || hasRole('principal') || hasRole('admin')
+      );
+    }
+
+    match /notifications/{id} {
+      allow read: if signedIn() && resource.data.to_user_id == request.auth.uid;
+      allow write: if signedIn();
+    }
+
+    match /logs/{id} {
+      allow read: if isAdminLike();
+      allow create: if signedIn();
+    }
+
+    match /scan_logs/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+    }
+
+    match /pdf_exports/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+    }
+
+    match /fcm_tokens/{id} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+    }
+
+    match /timetable/{id} {
+      allow read: if signedIn();
+      allow write: if isAdminLike() || hasRole('hod');
+    }
+
+    match /ec_requests/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasRole('ec');
+      allow update: if signedIn() && (isAdminLike() || hasRole('hod') || hasRole('mentor'));
+    }
+  }
+}

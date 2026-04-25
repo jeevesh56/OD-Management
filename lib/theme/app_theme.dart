@@ -177,11 +177,18 @@ class AppTheme {
       ),
     );
 
+    final mappedTextTheme = base.textTheme
+        .apply(
+          bodyColor: scheme.onSurface,
+          displayColor: scheme.onSurface,
+        )
+        .copyWith(
+          bodyMedium: TextStyle(color: scheme.onSurface),
+          titleLarge: TextStyle(color: scheme.onSurface),
+        );
+
     return base.copyWith(
-      textTheme: base.textTheme.apply(
-        bodyColor: scheme.onSurface,
-        displayColor: scheme.onSurface,
-      ),
+      textTheme: mappedTextTheme,
       iconTheme: IconThemeData(color: scheme.onSurface),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: scheme.surface,

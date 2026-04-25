@@ -16,6 +16,7 @@ export 'services/ec_request_service.dart';
 export 'services/fcm_service.dart';
 export 'services/firebase_document_store.dart';
 export 'services/firestore_paths.dart';
+export 'services/login_identifier_normalizer.dart';
 export 'services/od_request_service.dart';
 export 'services/pdf_export_service.dart';
 export 'services/qr_verification_service.dart';

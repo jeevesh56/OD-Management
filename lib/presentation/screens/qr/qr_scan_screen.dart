@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../data/services/qr_verification_service.dart';
+import '../../../domain/enums/user_role.dart';
+import '../../app/app_providers.dart';
 
-class QrScanScreen extends StatefulWidget {
+class QrScanScreen extends ConsumerStatefulWidget {
   const QrScanScreen({super.key, required this.verificationService});
 
   final QrVerificationService verificationService;
 
   @override
-  State<QrScanScreen> createState() => _QrScanScreenState();
+  ConsumerState<QrScanScreen> createState() => _QrScanScreenState();
 }
 
-class _QrScanScreenState extends State<QrScanScreen> {
+class _QrScanScreenState extends ConsumerState<QrScanScreen> {
   bool _busy = false;
   String _message = 'Scan a student ID QR';
 
@@ -21,7 +24,12 @@ class _QrScanScreenState extends State<QrScanScreen> {
     final value = capture.barcodes.first.rawValue?.trim() ?? '';
     if (value.isEmpty) return;
     setState(() => _busy = true);
-    final result = await widget.verificationService.verifyRegNo(value);
+    final user = ref.read(authStateProvider).asData?.value;
+    final result = await widget.verificationService.verifyRegNo(
+      value,
+      scannedBy: user?.id,
+      scannerRole: user?.role.value,
+    );
     if (!mounted) return;
     setState(() {
       _busy = false;

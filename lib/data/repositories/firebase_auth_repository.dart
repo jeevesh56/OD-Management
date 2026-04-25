@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../domain/entities/app_user.dart';
 import '../../domain/enums/user_role.dart';
 import '../../domain/repositories/auth_repository.dart';
+import '../services/login_identifier_normalizer.dart';
 import '../services/firestore_paths.dart';
 
 class FirebaseAuthRepository implements AuthRepository {
@@ -33,8 +34,9 @@ class FirebaseAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) async {
+    final normalizedEmail = LoginIdentifierNormalizer.toEmail(email);
     final credential = await _firebaseAuth.signInWithEmailAndPassword(
-      email: email.trim(),
+      email: normalizedEmail,
       password: password,
     );
     final appUser = await _resolveUserProfile(credential.user);
@@ -70,7 +72,12 @@ class FirebaseAuthRepository implements AuthRepository {
         email: firebaseUser.email ?? '',
         fullName: firebaseUser.displayName ?? 'User',
         role: UserRole.student,
+        regNo: null,
+        staffId: null,
+        phone: null,
         department: '',
+        className: null,
+        photoUrl: firebaseUser.photoURL,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
         isActive: true,
@@ -83,9 +90,14 @@ class FirebaseAuthRepository implements AuthRepository {
       email: data['email'] as String? ?? firebaseUser.email ?? '',
       fullName: data['full_name'] as String? ?? firebaseUser.displayName ?? 'User',
       role: UserRoleX.fromValue(data['role'] as String? ?? 'student'),
+      regNo: data['reg_no'] as String?,
+      staffId: data['staff_id'] as String?,
+      phone: data['phone'] as String?,
       department: data['department'] as String? ?? '',
+      className: data['class_name'] as String?,
       section: data['section'] as String?,
       classAdvisorId: data['class_advisor_id'] as String?,
+      photoUrl: data['photo_url'] as String? ?? firebaseUser.photoURL,
       createdAt: _toDateTime(data['created_at']),
       updatedAt: _toDateTime(data['updated_at']),
       isActive: data['is_active'] as bool? ?? true,

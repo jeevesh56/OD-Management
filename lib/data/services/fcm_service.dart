@@ -18,7 +18,7 @@ class FcmService {
     final token = await _messaging.getToken();
     if (token == null || token.isEmpty) return;
     await _store.set(
-      collection: 'fcm_tokens',
+      collection: FirestorePaths.fcmTokens,
       id: '${userId}_$token',
       data: {
         'user_id': userId,

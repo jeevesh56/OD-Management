@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'presentation/app/auth_gate.dart';
-import 'presentation/app/service_registry.dart';
+import 'presentation/app/app_providers.dart';
+import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -11,10 +12,14 @@ Future<void> main() async {
   try {
     await Firebase.initializeApp();
   } catch (_) {
-    // Keep legacy flow usable when Firebase is not configured yet.
+    // Fallback keeps web/app usable until Firebase web options are configured.
     firebaseEnabled = false;
   }
-  runApp(MyApp(firebaseEnabled: firebaseEnabled));
+  runApp(
+    ProviderScope(
+      child: MyApp(firebaseEnabled: firebaseEnabled),
+    ),
+  );
 }
 
 class ThemeController {
@@ -30,30 +35,35 @@ class ThemeController {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key, required this.firebaseEnabled});
 
   final bool firebaseEnabled;
 
   @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: ThemeController.mode,
-      builder: (context, themeMode, _) {
-        return MaterialApp(
-          title: 'OD Management System',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.light(),
-          darkTheme: AppTheme.dark(),
-          themeMode: themeMode,
-          themeAnimationDuration: const Duration(milliseconds: 220),
-          themeAnimationCurve: Curves.easeInOut,
-          home: AuthGate(
-            services: firebaseEnabled ? ServiceRegistry.create() : null,
-            firebaseEnabled: firebaseEnabled,
-          ),
-        );
-      },
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!firebaseEnabled) {
+      return MaterialApp(
+        title: 'OD Management System',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: ThemeMode.light,
+        themeAnimationDuration: const Duration(milliseconds: 220),
+        themeAnimationCurve: Curves.easeInOut,
+        home: const ODLoginUI(),
+      );
+    }
+
+    return MaterialApp.router(
+      title: 'OD Management System',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.light,
+      themeAnimationDuration: const Duration(milliseconds: 220),
+      themeAnimationCurve: Curves.easeInOut,
+      routerConfig: ref.watch(routerProvider),
     );
   }
 }

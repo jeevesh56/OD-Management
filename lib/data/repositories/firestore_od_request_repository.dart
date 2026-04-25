@@ -43,6 +43,13 @@ class FirestoreOdRequestRepository implements OdRequestRepository {
   }
 
   @override
+  Stream<OdRequest?> watchById(String requestId) {
+    return _store
+        .watchDocument(collection: FirestorePaths.odRequests, id: requestId)
+        .map((data) => data == null ? null : OdRequestModel.fromMap(requestId, data));
+  }
+
+  @override
   Future<List<OdRequest>> getByStudent(String studentId) async {
     final rows = await _store.query(
       collection: FirestorePaths.odRequests,
@@ -55,6 +62,21 @@ class FirestoreOdRequestRepository implements OdRequestRepository {
   }
 
   @override
+  Stream<List<OdRequest>> watchByStudent(String studentId) {
+    return _store
+        .watchQuery(
+          collection: FirestorePaths.odRequests,
+          field: 'student_id',
+          isEqualTo: studentId,
+        )
+        .map(
+          (rows) => rows
+              .map((row) => OdRequestModel.fromMap(row['id'] as String? ?? '', row))
+              .toList(),
+        );
+  }
+
+  @override
   Future<List<OdRequest>> getPendingForRole(String roleScope) async {
     final rows = await _store.query(
       collection: FirestorePaths.odRequests,
@@ -64,6 +86,21 @@ class FirestoreOdRequestRepository implements OdRequestRepository {
     return rows
         .map((row) => OdRequestModel.fromMap(row['id'] as String? ?? '', row))
         .toList();
+  }
+
+  @override
+  Stream<List<OdRequest>> watchPendingForRole(String roleScope) {
+    return _store
+        .watchQuery(
+          collection: FirestorePaths.odRequests,
+          field: 'current_approver_role',
+          isEqualTo: roleScope,
+        )
+        .map(
+          (rows) => rows
+              .map((row) => OdRequestModel.fromMap(row['id'] as String? ?? '', row))
+              .toList(),
+        );
   }
 
   @override

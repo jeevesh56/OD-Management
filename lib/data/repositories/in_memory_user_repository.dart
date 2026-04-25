@@ -8,7 +8,15 @@ class InMemoryUserRepository implements UserRepository {
   Future<AppUser?> getById(String userId) async => _users[userId];
 
   @override
+  Stream<AppUser?> watchById(String userId) async* {
+    yield _users[userId];
+  }
+
+  @override
   Future<void> upsert(AppUser user) async {
     _users[user.id] = user;
   }
+
+  @override
+  Future<void> updateProfile(AppUser user) => upsert(user);
 }

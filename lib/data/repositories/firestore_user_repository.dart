@@ -17,15 +17,27 @@ class FirestoreUserRepository implements UserRepository {
   }
 
   @override
+  Stream<AppUser?> watchById(String userId) {
+    return _store
+        .watchDocument(collection: FirestorePaths.users, id: userId)
+        .map((data) => data == null ? null : AppUserModel.fromMap(userId, data));
+  }
+
+  @override
   Future<void> upsert(AppUser user) async {
     final model = AppUserModel(
       id: user.id,
       email: user.email,
       fullName: user.fullName,
       role: user.role,
+      regNo: user.regNo,
+      staffId: user.staffId,
+      phone: user.phone,
       department: user.department,
+      className: user.className,
       section: user.section,
       classAdvisorId: user.classAdvisorId,
+      photoUrl: user.photoUrl,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt ?? DateTime.now(),
       isActive: user.isActive,
@@ -37,4 +49,7 @@ class FirestoreUserRepository implements UserRepository {
       data: model.toMap(),
     );
   }
+
+  @override
+  Future<void> updateProfile(AppUser user) => upsert(user);
 }
