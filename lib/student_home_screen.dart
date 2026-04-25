@@ -7,6 +7,7 @@ import 'dart:html' as html;
 import 'package:flutter/material.dart';
 
 import 'api_service.dart';
+import 'domain/rules/od_rule_engine.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
 import 'widgets/portal_page_layout.dart';
@@ -922,6 +923,16 @@ class _NewODPageState extends State<_NewODPage> {
     }
     if (reasonController.text.trim().isEmpty) {
       _err('Enter a reason');
+      return;
+    }
+
+    final validation = OdRuleEngine.validateApplication(
+      startDateTime: selectedDateTime!,
+      endDateTime: selectedDateTime!,
+      isMultiDay: false,
+    );
+    if (!validation.isValid) {
+      _err(validation.violations.first.message);
       return;
     }
 

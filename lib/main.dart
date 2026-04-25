@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:od/screens/login_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
 
+import 'presentation/app/auth_gate.dart';
+import 'presentation/app/service_registry.dart';
 import 'theme/app_theme.dart';
 
-void main() {
-  runApp(const MyApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  var firebaseEnabled = true;
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    // Keep legacy flow usable when Firebase is not configured yet.
+    firebaseEnabled = false;
+  }
+  runApp(MyApp(firebaseEnabled: firebaseEnabled));
 }
 
 class ThemeController {
@@ -21,7 +31,9 @@ class ThemeController {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.firebaseEnabled});
+
+  final bool firebaseEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +48,10 @@ class MyApp extends StatelessWidget {
           themeMode: themeMode,
           themeAnimationDuration: const Duration(milliseconds: 220),
           themeAnimationCurve: Curves.easeInOut,
-          home: const ODLoginUI(),
+          home: AuthGate(
+            services: firebaseEnabled ? ServiceRegistry.create() : null,
+            firebaseEnabled: firebaseEnabled,
+          ),
         );
       },
     );

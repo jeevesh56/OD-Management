@@ -45,17 +45,16 @@ class _ODLoginUIState extends State<ODLoginUI> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Colors.white,
       body: Center(
         child: Container(
           width: 960,
           height: 540,
           decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
           ),
           clipBehavior: Clip.antiAlias,
           child: Row(
@@ -63,7 +62,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
               // LEFT SIDE
               Expanded(
                 child: Container(
-                  color: Theme.of(context).cardColor,
+                  color: Colors.white,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -75,17 +74,18 @@ class _ODLoginUIState extends State<ODLoginUI> {
                       const SizedBox(height: 22),
                       Text(
                         "OD Management System",
-                        style: textTheme.titleLarge?.copyWith(
+                        style: const TextStyle(
                           fontSize: 30,
                           fontWeight: FontWeight.bold,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 10),
                       Text(
                         "OD Requests Made Simple",
-                        style: textTheme.bodyMedium?.copyWith(
+                        style: const TextStyle(
                           fontSize: 18,
-                          color: scheme.onSurface.withValues(alpha: 0.72),
+                          color: Color(0xFF4B5563),
                         ),
                       ),
                     ],
@@ -146,7 +146,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
                         _welcomeUsername != null && _welcomeUsername!.isNotEmpty
                             ? "Welcome, $_welcomeUsername"
                             : "Welcome",
-                        style: textTheme.titleLarge?.copyWith(
+                        style: const TextStyle(
                           fontSize: 28,
                           color: Colors.white,
                           fontWeight: FontWeight.w500,

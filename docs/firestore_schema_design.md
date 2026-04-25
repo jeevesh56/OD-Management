@@ -220,3 +220,70 @@
 - `users.uid` -> `logs.actor_id`
 - `users.uid` -> `ec_requests.created_by`
 - `users.uid` -> `ec_requests.student_ids[]`
+
+## Collection: `scan_logs`
+### Fields
+- `scan_log_id` (string, doc id)
+- `request_id` (ref: od_requests.request_id)
+- `student_register_number` (string)
+- `scanned_by` (ref: users.uid)
+- `scanner_role` (string)
+- `result` (string: valid|invalid|expired)
+- `created_at` (timestamp)
+
+### Example
+```json
+{
+  "scan_log_id": "scan_001",
+  "request_id": "od_20260425_001",
+  "student_register_number": "2117240020158",
+  "scanned_by": "u_mentor_cse_a",
+  "scanner_role": "mentor",
+  "result": "valid",
+  "created_at": "2026-04-25T15:10:00Z"
+}
+```
+
+## Collection: `pdf_exports`
+### Fields
+- `pdf_export_id` (string, doc id)
+- `request_id` (ref: od_requests.request_id)
+- `generated_by` (ref: users.uid, optional system user)
+- `storage_path` (string)
+- `status` (string: generated|failed)
+- `created_at` (timestamp)
+
+### Example
+```json
+{
+  "pdf_export_id": "pdf_001",
+  "request_id": "od_20260425_001",
+  "generated_by": "system",
+  "storage_path": "gs://od/pdfs/od_20260425_001.pdf",
+  "status": "generated",
+  "created_at": "2026-04-25T16:00:00Z"
+}
+```
+
+## Collection: `fcm_tokens`
+### Fields
+- `fcm_token_id` (string, doc id)
+- `user_id` (ref: users.uid)
+- `token` (string)
+- `platform` (string)
+- `is_active` (bool)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+### Example
+```json
+{
+  "fcm_token_id": "tok_001",
+  "user_id": "u_mentor_cse_a",
+  "token": "dummytokenvalue",
+  "platform": "android",
+  "is_active": true,
+  "created_at": "2026-04-25T12:12:00Z",
+  "updated_at": "2026-04-25T12:12:00Z"
+}
+```
