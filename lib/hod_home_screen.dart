@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
+import 'widgets/portal_od_helpers.dart';
 import 'widgets/role_profile_widgets.dart';
 
 const Color kHoDPrimary = Color(0xFF0F3D91);
@@ -136,6 +138,15 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
   }
 
   Future<void> _openProof(Map<String, dynamic> row) async {
+    final fileUrl = row['file_url']?.toString().trim() ?? '';
+    if (fileUrl.isNotEmpty) {
+      final uri = Uri.tryParse(getFullUrl(fileUrl));
+      if (uri != null) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    }
+
     final b64 = row['attachment_base64']?.toString();
     final mime = row['attachment_mime']?.toString();
 
@@ -198,7 +209,6 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
                     isDesktop: desktop,
                     onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
                     onToggleTheme: ThemeController.toggle,
-                    onLogout: _logout,
                   ),
                   Expanded(
                     child: _loading
@@ -283,8 +293,8 @@ class _Sidebar extends StatelessWidget {
     final roleLabel = (AuthStore.role ?? 'hod').toLowerCase() == 'mentor'
         ? 'Mentor Panel'
         : (AuthStore.role ?? 'hod').toLowerCase() == 'principal'
-            ? 'Principal Panel'
-            : 'HOD Panel';
+        ? 'Principal Panel'
+        : 'HOD Panel';
 
     return Container(
       color: kHoDSidebar,
@@ -373,7 +383,7 @@ class _Sidebar extends StatelessWidget {
           ),
           _SidebarItem(
             icon: Icons.event_note_rounded,
-              label: 'OD Requests',
+            label: 'OD Requests',
             active: current == 2,
             onTap: () => onTap(2),
           ),
@@ -415,7 +425,9 @@ class _SidebarItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: Material(
-        color: active ? Colors.white.withValues(alpha: 0.16) : Colors.transparent,
+        color: active
+            ? Colors.white.withValues(alpha: 0.16)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -448,14 +460,12 @@ class _Topbar extends StatelessWidget {
     required this.isDesktop,
     required this.onMenuTap,
     required this.onToggleTheme,
-    required this.onLogout,
   });
 
   final String title;
   final bool isDesktop;
   final VoidCallback onMenuTap;
   final VoidCallback onToggleTheme;
-  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -481,11 +491,6 @@ class _Topbar extends StatelessWidget {
             icon: const Icon(Icons.brightness_6_outlined),
             tooltip: 'Toggle theme',
             onPressed: onToggleTheme,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Logout',
-            onPressed: onLogout,
           ),
           const SizedBox(width: 4),
           CircleAvatar(
@@ -517,16 +522,30 @@ class _DashboardPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = AuthStore.fullName ?? 'HoD';
     final dept = AuthStore.userDepartment ?? 'Department';
-    final totalCount = requests.length;
-    final approvedCount = requests
-        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'approved')
-        .length;
-    final rejectedCount = requests
-        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'rejected')
-        .length;
-    final pendingCount = requests
-        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'pending')
-        .length;
+    final totalCount = (analytics['total'] as num?)?.toInt() ?? requests.length;
+    final approvedCount =
+        (analytics['approved'] as num?)?.toInt() ??
+        requests
+            .where(
+              (e) =>
+                  (e['status']?.toString() ?? '').toLowerCase() == 'approved',
+            )
+            .length;
+    final rejectedCount =
+        (analytics['rejected'] as num?)?.toInt() ??
+        requests
+            .where(
+              (e) =>
+                  (e['status']?.toString() ?? '').toLowerCase() == 'rejected',
+            )
+            .length;
+    final pendingCount =
+        (analytics['pending'] as num?)?.toInt() ??
+        requests
+            .where(
+              (e) => (e['status']?.toString() ?? '').toLowerCase() == 'pending',
+            )
+            .length;
     final total = totalCount.toString();
     final approved = approvedCount.toString();
     final pending = pendingCount.toString();
@@ -535,11 +554,7 @@ class _DashboardPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        RoleProfileCard(
-          name: name,
-          role: 'Head of Department',
-          subtitle: dept,
-        ),
+        RoleProfileCard(name: name, role: 'Head of Department', subtitle: dept),
         DashboardStatGrid(
           items: [
             DashboardStatItem(
@@ -592,98 +607,17 @@ class _ParticipantsTable extends StatelessWidget {
       );
     }
 
-    final desktop = MediaQuery.of(context).size.width >= 900;
-    if (!desktop) {
-      return Column(
-        children: requests
-            .map(
-              (row) => _ParticipantCard(
-                row: row,
-                onApprove: () => onApprove(row),
-                onReject: () => onReject(row),
-                onViewProof: () => onViewProof(row),
-              ),
-            )
-            .toList(),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6ECF5)),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columns: const [
-            DataColumn(label: Text('Participant')),
-            DataColumn(label: Text('Event')),
-            DataColumn(label: Text('Date')),
-            DataColumn(label: Text('Venue')),
-            DataColumn(label: Text('Status')),
-            DataColumn(label: Text('Actions')),
-          ],
-          rows: requests.map((row) {
-            final hasProof =
-                (row['attachment_base64']?.toString().isNotEmpty ?? false) &&
-                (row['attachment_mime']?.toString().isNotEmpty ?? false);
-            return DataRow(
-              cells: [
-                DataCell(Text(row['student_name']?.toString() ?? 'Student')),
-                DataCell(
-                  Text(row['event_name']?.toString() ?? 'Untitled event'),
-                ),
-                DataCell(
-                  Text(row['datetime']?.toString() ?? '---'),
-                ),
-                DataCell(Text(row['venue']?.toString() ?? '---')),
-                DataCell(_statusChip(row['status']?.toString() ?? 'Pending')),
-                DataCell(
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      TextButton(
-                        onPressed: () => onApprove(row),
-                        child: const Text('Approve'),
-                      ),
-                      TextButton(
-                        onPressed: () => onReject(row),
-                        child: const Text('Reject'),
-                      ),
-                      if (hasProof)
-                        TextButton(
-                          onPressed: () => onViewProof(row),
-                          child: const Text('View Proof'),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-  Widget _statusChip(String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3DB),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        value,
-        style: const TextStyle(
-          color: Color(0xFF9C6B00),
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
-      ),
+    return Column(
+      children: requests
+          .map(
+            (row) => _ParticipantCard(
+              row: row,
+              onApprove: () => onApprove(row),
+              onReject: () => onReject(row),
+              onViewProof: () => onViewProof(row),
+            ),
+          )
+          .toList(),
     );
   }
 }
@@ -704,28 +638,32 @@ class _ParticipantCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasProof =
-        (row['attachment_base64']?.toString().isNotEmpty ?? false) &&
-        (row['attachment_mime']?.toString().isNotEmpty ?? false);
+        (row['file_url']?.toString().trim().isNotEmpty ?? false) ||
+        ((row['attachment_base64']?.toString().isNotEmpty ?? false) &&
+            (row['attachment_mime']?.toString().isNotEmpty ?? false));
+    final formattedDate = portalOdDateTime(row['datetime']);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6ECF5)),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            row['student_name']?.toString() ?? 'Student',
-            style: const TextStyle(fontWeight: FontWeight.w700),
+            row['event_name']?.toString() ?? 'Untitled event',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 4),
-          Text(row['event_name']?.toString() ?? 'Untitled event'),
-          const SizedBox(height: 8),
-          Text(row['datetime']?.toString() ?? '---'),
-          Text(row['venue']?.toString() ?? '---'),
+          const SizedBox(height: 6),
+          Text('Participant: ${row['student_name']?.toString() ?? 'Student'}'),
+          Text('Date & Time: $formattedDate'),
+          Text('Venue: ${row['venue']?.toString() ?? '---'}'),
+          Text(
+            'Organizer: ${row['organizer']?.toString() ?? row['organiser']?.toString() ?? '---'}',
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -773,8 +711,8 @@ class _EventsPanel extends StatelessWidget {
         const SizedBox(height: 14),
         if (sessions.isEmpty)
           const _EmptyState(
-              icon: Icons.event_busy_outlined,
-              title: 'No active OD requests',
+            icon: Icons.event_busy_outlined,
+            title: 'No active OD requests',
             subtitle:
                 'Once approved students are in-session, they will show up here.',
           )

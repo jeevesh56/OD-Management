@@ -20,11 +20,12 @@ class PortalRequestDetailScreen extends StatelessWidget {
     final status = request['status']?.toString() ?? '';
     final badgeColor = portalOdStatusColor(status);
     final stages = odTimelineStagesFromRequest(request);
-    final schedule = request['datetime']?.toString().isNotEmpty == true
-        ? request['datetime'].toString()
+    final schedule = request['datetime'] != null
+        ? portalOdDateTime(request['datetime'])
         : portalOdDateLabel(request['start_date'], request['end_date']);
 
-    final mentorDone = request['mentor_approved'] == true ||
+    final mentorDone =
+        request['mentor_approved'] == true ||
         const {'MENTOR_APPROVED', 'HOD_APPROVED', 'Approved'}.contains(status);
     final mentorRejected = status == 'MENTOR_REJECTED';
     final hodDone = request['hod_approved'] == true || status == 'HOD_APPROVED';
@@ -101,19 +102,32 @@ class PortalRequestDetailScreen extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 14),
-                            _detailRow(Icons.event_outlined, 'Date & time', schedule),
-                            _detailRow(Icons.place_outlined, 'Venue',
-                                request['venue']?.toString() ?? '—'),
-                            _detailRow(Icons.groups_outlined, 'Organizer',
+                            _detailRow(
+                              Icons.event_outlined,
+                              'Date & time',
+                              schedule,
+                            ),
+                            _detailRow(
+                              Icons.place_outlined,
+                              'Venue',
+                              request['venue']?.toString() ?? '—',
+                            ),
+                            _detailRow(
+                              Icons.groups_outlined,
+                              'Organizer',
                               request['organiser']?.toString() ??
-                                request['organizer']?.toString() ??
-                                '—'),
-                            _detailRow(Icons.badge_outlined, 'Request ID',
-                                request['id']?.toString() ?? '—'),
+                                  request['organizer']?.toString() ??
+                                  '—',
+                            ),
+                            _detailRow(
+                              Icons.badge_outlined,
+                              'Request ID',
+                              request['id']?.toString() ?? '—',
+                            ),
                             const Divider(height: 28),
                             if (request['mentor_comment'] != null ||
-                              request['hod_comment'] != null ||
-                              request['principal_comment'] != null) ...[
+                                request['hod_comment'] != null ||
+                                request['principal_comment'] != null) ...[
                               const Text(
                                 'Staff remarks',
                                 style: TextStyle(
@@ -173,24 +187,24 @@ class PortalRequestDetailScreen extends StatelessWidget {
                                   state: mentorRejected
                                       ? PortalChipState.rejected
                                       : mentorDone
-                                          ? PortalChipState.completed
-                                          : PortalChipState.pending,
+                                      ? PortalChipState.completed
+                                      : PortalChipState.pending,
                                 ),
                                 PortalProgressChip(
                                   text: 'HoD',
                                   state: hodRejected
                                       ? PortalChipState.rejected
                                       : hodDone
-                                          ? PortalChipState.completed
-                                          : PortalChipState.pending,
+                                      ? PortalChipState.completed
+                                      : PortalChipState.pending,
                                 ),
                                 PortalProgressChip(
                                   text: 'Principal',
                                   state: principalRejected
                                       ? PortalChipState.rejected
                                       : principalDone
-                                          ? PortalChipState.completed
-                                          : PortalChipState.pending,
+                                      ? PortalChipState.completed
+                                      : PortalChipState.pending,
                                 ),
                               ],
                             ),
@@ -206,7 +220,11 @@ class PortalRequestDetailScreen extends StatelessWidget {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.timeline, color: scheme.primary, size: 22),
+                                Icon(
+                                  Icons.timeline,
+                                  color: scheme.primary,
+                                  size: 22,
+                                ),
                                 const SizedBox(width: 8),
                                 Text(
                                   'Status timeline',
@@ -241,7 +259,8 @@ class PortalRequestDetailScreen extends StatelessWidget {
                                     MaterialPageRoute(
                                       builder: (_) =>
                                           PortalStatusTimelineScreen(
-                                              request: request),
+                                            request: request,
+                                          ),
                                     ),
                                   );
                                 },
@@ -251,7 +270,8 @@ class PortalRequestDetailScreen extends StatelessWidget {
                                   foregroundColor: kBlue,
                                   side: const BorderSide(color: kBlue),
                                   padding: const EdgeInsets.symmetric(
-                                      vertical: 14),
+                                    vertical: 14,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
@@ -261,7 +281,8 @@ class PortalRequestDetailScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                      if (status == 'Approved' || request['principal_approved'] == true) ...[
+                      if (status == 'Approved' ||
+                          request['principal_approved'] == true) ...[
                         const SizedBox(height: 16),
                         SizedBox(
                           width: double.infinity,
@@ -272,11 +293,10 @@ class PortalRequestDetailScreen extends StatelessWidget {
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => PortalQrScreen(
-                                    eventName: request['event_name']
-                                            ?.toString() ??
+                                    eventName:
+                                        request['event_name']?.toString() ??
                                         'OD',
-                                    requestId:
-                                        request['id']?.toString() ?? '',
+                                    requestId: request['id']?.toString() ?? '',
                                   ),
                                 ),
                               );
@@ -323,10 +343,7 @@ class PortalRequestDetailScreen extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
                 const SizedBox(height: 2),
                 Text(

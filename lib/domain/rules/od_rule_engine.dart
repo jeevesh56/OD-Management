@@ -1,8 +1,5 @@
 class RuleViolation {
-  const RuleViolation({
-    required this.code,
-    required this.message,
-  });
+  const RuleViolation({required this.code, required this.message});
 
   final String code;
   final String message;
@@ -30,15 +27,6 @@ class OdRuleEngine {
         const RuleViolation(
           code: 'PAST_DATE_NOT_ALLOWED',
           message: 'OD cannot be applied for a past date.',
-        ),
-      );
-    }
-
-    if (!_isWithinAllowedTimeWindow(startDateTime, endDateTime, isMultiDay)) {
-      violations.add(
-        const RuleViolation(
-          code: 'OUTSIDE_TIME_WINDOW',
-          message: 'OD time must be within 08:00 AM to 05:00 PM.',
         ),
       );
     }
@@ -78,32 +66,13 @@ class OdRuleEngine {
     return startDay.isBefore(today);
   }
 
-  static bool _isWithinAllowedTimeWindow(
-    DateTime startDateTime,
-    DateTime endDateTime,
-    bool isMultiDay,
-  ) {
-    if (isMultiDay) {
-      // Multi-day OD does not require period-level time constraints.
-      return true;
-    }
-
-    final startMinutes = (startDateTime.hour * 60) + startDateTime.minute;
-    final endMinutes = (endDateTime.hour * 60) + endDateTime.minute;
-    const minMinutes = 8 * 60;
-    const maxMinutes = 17 * 60;
-
-    return startMinutes >= minMinutes &&
-        endMinutes <= maxMinutes &&
-        endMinutes > startMinutes;
-  }
-
   static RuleViolation? _validateMultiDayLogic({
     required DateTime startDateTime,
     required DateTime endDateTime,
     required bool isMultiDay,
   }) {
-    final sameDay = startDateTime.year == endDateTime.year &&
+    final sameDay =
+        startDateTime.year == endDateTime.year &&
         startDateTime.month == endDateTime.month &&
         startDateTime.day == endDateTime.day;
 

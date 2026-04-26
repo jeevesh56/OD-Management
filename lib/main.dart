@@ -10,28 +10,22 @@ import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  await FirebaseFirestore.instance
-      .collection('test')
-      .add({'msg': 'Firebase connected'});
-  runApp(
-    ProviderScope(
-      child: const MyApp(),
-    ),
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await FirebaseFirestore.instance.collection('test').add({
+    'msg': 'Firebase connected',
+  });
+  runApp(ProviderScope(child: const MyApp()));
 }
 
 class ThemeController {
-  static final ValueNotifier<ThemeMode> mode =
-      ValueNotifier<ThemeMode>(ThemeMode.system);
+  static final ValueNotifier<ThemeMode> mode = ValueNotifier<ThemeMode>(
+    ThemeMode.system,
+  );
 
   static void toggle() {
     mode.value = switch (mode.value) {
-      ThemeMode.system => ThemeMode.light,
-      ThemeMode.light => ThemeMode.dark,
-      ThemeMode.dark => ThemeMode.system,
+      ThemeMode.dark => ThemeMode.light,
+      _ => ThemeMode.dark,
     };
   }
 }
@@ -65,16 +59,18 @@ class _MyAppState extends ConsumerState<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'OD Management System',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.light,
-      themeAnimationDuration: const Duration(milliseconds: 220),
-      themeAnimationCurve: Curves.easeInOut,
-      routerConfig: ref.watch(routerProvider),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.mode,
+      builder: (context, mode, _) => MaterialApp.router(
+        title: 'OD Management System',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: mode,
+        themeAnimationDuration: const Duration(milliseconds: 220),
+        themeAnimationCurve: Curves.easeInOut,
+        routerConfig: ref.watch(routerProvider),
+      ),
     );
   }
 }
-

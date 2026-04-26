@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
+import 'widgets/portal_od_helpers.dart';
 import 'widgets/role_profile_widgets.dart';
 
 const Color kPrincipalPrimary = Color(0xFF1257B0);
@@ -29,6 +30,7 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   bool _busy = false;
   String? _error;
   List<Map<String, dynamic>> _queue = [];
+  List<Map<String, dynamic>> _allRequests = [];
   final Set<String> _selectedIds = <String>{};
   Timer? _timer;
 
@@ -72,7 +74,10 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
       });
     }
 
-    final res = await PrincipalApi.queue();
+    final results = await Future.wait([
+      PrincipalApi.queue(),
+      PrincipalApi.history(),
+    ]);
     if (!mounted) {
       _busy = false;
       return;
@@ -80,12 +85,19 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
 
     setState(() {
       if (!silent) _loading = false;
-      if (res.ok) {
-        _queue = _mapList(res.data);
-        final visibleIds = _queue.map((item) => item['id']?.toString() ?? '').toSet();
+      final queueRes = results[0] as ApiResult<dynamic>;
+      final historyRes = results[1] as ApiResult<dynamic>;
+      if (queueRes.ok) {
+        _queue = _mapList(queueRes.data);
+        final visibleIds = _queue
+            .map((item) => item['id']?.toString() ?? '')
+            .toSet();
         _selectedIds.removeWhere((id) => !visibleIds.contains(id));
       } else {
-        _error = res.error ?? 'Failed to load principal requests';
+        _error = queueRes.error ?? 'Failed to load principal requests';
+      }
+      if (historyRes.ok) {
+        _allRequests = _mapList(historyRes.data);
       }
     });
 
@@ -167,7 +179,9 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       drawer: desktop
           ? null
-          : Drawer(child: _Sidebar(current: _section, onTap: _onTapSection)),
+          : Drawer(
+              child: _Sidebar(current: _section, onTap: _onTapSection),
+            ),
       body: SafeArea(
         child: Row(
           children: [
@@ -184,21 +198,25 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
                     isDesktop: desktop,
                     onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
                     onToggleTheme: ThemeController.toggle,
-                    onLogout: _logout,
                   ),
                   Expanded(
                     child: _loading
                         ? const Center(child: CircularProgressIndicator())
                         : _error != null
-                            ? _ErrorPanel(error: _error!, onRetry: _loadQueue)
-                            : RefreshIndicator(
-                                onRefresh: _loadQueue,
-                                child: SingleChildScrollView(
-                                  physics: const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-                                  child: _contentBySection(),
-                                ),
+                        ? _ErrorPanel(error: _error!, onRetry: _loadQueue)
+                        : RefreshIndicator(
+                            onRefresh: _loadQueue,
+                            child: SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                20,
+                                20,
+                                28,
                               ),
+                              child: _contentBySection(),
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -228,7 +246,7 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   Widget _contentBySection() {
     switch (_section) {
       case 0:
-        return _DashboardPanel(queue: _queue);
+        return _DashboardPanel(queue: _allRequests);
       case 2:
         return _ProfilePanel(onLogout: _logout);
       default:
@@ -258,8 +276,8 @@ class _Sidebar extends StatelessWidget {
     final roleLabel = (AuthStore.role ?? 'principal').toLowerCase() == 'mentor'
         ? 'Mentor Panel'
         : (AuthStore.role ?? 'principal').toLowerCase() == 'hod'
-            ? 'HOD Panel'
-            : 'Principal Panel';
+        ? 'HOD Panel'
+        : 'Principal Panel';
 
     return Container(
       color: kPrincipalSidebar,
@@ -376,7 +394,9 @@ class _SidebarItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: Material(
-        color: active ? Colors.white.withValues(alpha: 0.16) : Colors.transparent,
+        color: active
+            ? Colors.white.withValues(alpha: 0.16)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -409,14 +429,12 @@ class _Topbar extends StatelessWidget {
     required this.isDesktop,
     required this.onMenuTap,
     required this.onToggleTheme,
-    required this.onLogout,
   });
 
   final String title;
   final bool isDesktop;
   final VoidCallback onMenuTap;
   final VoidCallback onToggleTheme;
-  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -441,10 +459,6 @@ class _Topbar extends StatelessWidget {
           IconButton(
             onPressed: onToggleTheme,
             icon: const Icon(Icons.brightness_6_outlined),
-          ),
-          IconButton(
-            onPressed: onLogout,
-            icon: const Icon(Icons.logout_rounded),
           ),
           CircleAvatar(
             backgroundColor: kPrincipalPrimary.withValues(alpha: 0.1),
@@ -472,23 +486,25 @@ class _DashboardPanel extends StatelessWidget {
     final dept = AuthStore.userDepartment ?? 'Department';
     final total = queue.length;
     final approved = queue
-        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'approved')
+        .where(
+          (e) => (e['status']?.toString() ?? '').toLowerCase() == 'approved',
+        )
         .length;
     final rejected = queue
-        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'rejected')
+        .where(
+          (e) => (e['status']?.toString() ?? '').toLowerCase() == 'rejected',
+        )
         .length;
     final pending = queue
-        .where((e) => (e['status']?.toString() ?? '').toLowerCase() == 'pending')
+        .where(
+          (e) => (e['status']?.toString() ?? '').toLowerCase() == 'pending',
+        )
         .length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        RoleProfileCard(
-          name: name,
-          role: 'Principal',
-          subtitle: dept,
-        ),
+        RoleProfileCard(name: name, role: 'Principal', subtitle: dept),
         DashboardStatGrid(
           items: [
             DashboardStatItem(
@@ -551,7 +567,9 @@ class _ODRequestsPanel extends StatelessWidget {
   final VoidCallback onBulkApprove;
   final ValueChanged<List<Map<String, dynamic>>> onBulkApproveGroup;
 
-  Map<String, List<Map<String, dynamic>>> _groupByEvent(List<Map<String, dynamic>> data) {
+  Map<String, List<Map<String, dynamic>>> _groupByEvent(
+    List<Map<String, dynamic>> data,
+  ) {
     final grouped = <String, List<Map<String, dynamic>>>{};
 
     for (final item in data) {
@@ -592,55 +610,58 @@ class _ODRequestsPanel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        ...groupedData.entries.map(
-          (entry) {
-            final eventName = entry.key;
-            final items = entry.value;
-            return Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          eventName,
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ...groupedData.entries.map((entry) {
+          final eventName = entry.key;
+          final items = entry.value;
+          return Container(
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 6),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        eventName,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      ElevatedButton(
-                        onPressed: () => onBulkApproveGroup(items),
-                        child: const Text('Approve All'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  ...items.map(
-                    (row) => _ODRequestCard(
-                      row: row,
-                      selected: selectedIds.contains(row['id']?.toString() ?? ''),
-                      onToggleSelected: (checked) {
-                        final id = row['id']?.toString() ?? '';
-                        if (id.isEmpty) return;
-                        onToggleSelected(id, checked);
-                      },
-                      onApprove: () => onApprove(row),
-                      onReject: () => onReject(row),
                     ),
+                    ElevatedButton(
+                      onPressed: () => onBulkApproveGroup(items),
+                      child: const Text('Approve All'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ...items.map(
+                  (row) => _ODRequestCard(
+                    row: row,
+                    selected: selectedIds.contains(row['id']?.toString() ?? ''),
+                    onToggleSelected: (checked) {
+                      final id = row['id']?.toString() ?? '';
+                      if (id.isEmpty) return;
+                      onToggleSelected(id, checked);
+                    },
+                    onApprove: () => onApprove(row),
+                    onReject: () => onReject(row),
                   ),
-                ],
-              ),
-            );
-          },
-        ),
+                ),
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
@@ -690,7 +711,8 @@ class _ODRequestCard extends StatelessWidget {
           height: 180,
           width: double.infinity,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => const Text('Image load failed'),
+          errorBuilder: (context, error, stackTrace) =>
+              const Text('Image load failed'),
         ),
       );
     }
@@ -749,7 +771,12 @@ class _ODRequestCard extends StatelessWidget {
         final bytes = base64Decode(b64);
         return ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.memory(bytes, height: 180, width: double.infinity, fit: BoxFit.cover),
+          child: Image.memory(
+            bytes,
+            height: 180,
+            width: double.infinity,
+            fit: BoxFit.cover,
+          ),
         );
       } catch (_) {
         return const Text('Image load failed');
@@ -766,9 +793,10 @@ class _ODRequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final eventName = row['event_name']?.toString() ?? 'Untitled event';
-    final datetime = row['datetime']?.toString() ?? '---';
+    final datetime = portalOdDateTime(row['datetime']);
     final venue = row['venue']?.toString() ?? '---';
-    final organizer = row['organizer']?.toString() ?? row['organiser']?.toString() ?? '---';
+    final organizer =
+        row['organizer']?.toString() ?? row['organiser']?.toString() ?? '---';
     final reason = row['reason']?.toString() ?? '---';
     final fileUrl = row['file_url']?.toString() ?? '';
 
@@ -792,7 +820,10 @@ class _ODRequestCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   eventName,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -820,7 +851,9 @@ class _ODRequestCard extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 8),
-                fileUrl.isNotEmpty ? _buildFilePreview(context, fileUrl) : _buildLegacyPreview(),
+                fileUrl.isNotEmpty
+                    ? _buildFilePreview(context, fileUrl)
+                    : _buildLegacyPreview(),
               ],
             ),
           ),
@@ -837,12 +870,16 @@ class _ODRequestCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                      ),
                       onPressed: onApprove,
                       child: const Text('Approve'),
                     ),
                     ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                      ),
                       onPressed: onReject,
                       child: const Text('Reject'),
                     ),

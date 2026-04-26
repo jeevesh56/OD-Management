@@ -25,7 +25,7 @@ List<OdTimelineStage> odTimelineStagesFromRequest(Map<dynamic, dynamic> r) {
   final mentorApproved = r['mentor_approved'] == true;
   final hodApproved = r['hod_approved'] == true;
   final principalApproved = r['principal_approved'] == true;
-  final created = portalOdShortDate(r['created_at']?.toString() ?? '—');
+  final created = portalOdDateTime(r['created_at']);
 
   OdStageState mentorState() {
     if (status == 'MENTOR_REJECTED') return OdStageState.rejected;
@@ -48,7 +48,8 @@ List<OdTimelineStage> odTimelineStagesFromRequest(Map<dynamic, dynamic> r) {
 
   OdStageState principalState() {
     if (status == 'Rejected') return OdStageState.rejected;
-    if (principalApproved || status == 'Approved') return OdStageState.completed;
+    if (principalApproved || status == 'Approved')
+      return OdStageState.completed;
     if (const {'MENTOR_REJECTED', 'HOD_REJECTED'}.contains(status)) {
       return OdStageState.pending;
     }
@@ -141,11 +142,7 @@ class PortalOdVerticalTimeline extends StatelessWidget {
       children: List.generate(stages.length, (i) {
         final s = stages[i];
         final isLast = i == stages.length - 1;
-        return _TimelineRow(
-          stage: s,
-          showLineBelow: !isLast,
-          compact: compact,
-        );
+        return _TimelineRow(stage: s, showLineBelow: !isLast, compact: compact);
       }),
     );
   }
@@ -165,32 +162,36 @@ class _TimelineRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final (Color dotBg, Color dotBorder, IconData icon, Color iconColor) =
-        switch (stage.state) {
+    final (
+      Color dotBg,
+      Color dotBorder,
+      IconData icon,
+      Color iconColor,
+    ) = switch (stage.state) {
       OdStageState.completed => (
-          scheme.secondaryContainer,
-          Colors.green,
-          Icons.check_rounded,
-          Colors.green.shade700,
-        ),
+        scheme.secondaryContainer,
+        Colors.green,
+        Icons.check_rounded,
+        Colors.green.shade700,
+      ),
       OdStageState.current => (
-          scheme.primaryContainer,
-          Colors.orange,
-          Icons.more_horiz_rounded,
-          Colors.orange.shade800,
-        ),
+        scheme.primaryContainer,
+        Colors.orange,
+        Icons.more_horiz_rounded,
+        Colors.orange.shade800,
+      ),
       OdStageState.rejected => (
-          scheme.errorContainer,
-          Colors.red,
-          Icons.close_rounded,
-          Colors.red.shade700,
-        ),
+        scheme.errorContainer,
+        Colors.red,
+        Icons.close_rounded,
+        Colors.red.shade700,
+      ),
       OdStageState.pending => (
-          scheme.surfaceContainerHigh,
-          scheme.outline,
-          Icons.schedule_rounded,
-          scheme.onSurface.withValues(alpha: 0.65),
-        ),
+        scheme.surfaceContainerHigh,
+        scheme.outline,
+        Icons.schedule_rounded,
+        scheme.onSurface.withValues(alpha: 0.65),
+      ),
     };
 
     return IntrinsicHeight(

@@ -6,6 +6,7 @@ import 'dart:html' as html;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import 'api_service.dart';
 import 'domain/rules/od_rule_engine.dart';
@@ -41,10 +42,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       drawer: desktop
           ? null
           : Drawer(
-              child: _StudentSidebar(
-                current: _tab,
-                onTap: _onSelectTab,
-              ),
+              child: _StudentSidebar(current: _tab, onTap: _onSelectTab),
             ),
       body: SafeArea(
         child: Row(
@@ -52,10 +50,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             if (desktop)
               SizedBox(
                 width: 260,
-                child: _StudentSidebar(
-                  current: _tab,
-                  onTap: _onSelectTab,
-                ),
+                child: _StudentSidebar(current: _tab, onTap: _onSelectTab),
               ),
             Expanded(
               child: Column(
@@ -65,7 +60,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     isDesktop: desktop,
                     onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
                     onToggleTheme: ThemeController.toggle,
-                    onLogout: _logout,
                   ),
                   Expanded(
                     child: IndexedStack(
@@ -111,15 +105,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       default:
         return 'Dashboard';
     }
-  }
-
-  Future<void> _logout() async {
-    AuthStore.clear();
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const ODLoginUI()),
-    );
   }
 }
 
@@ -255,7 +240,9 @@ class _StudentSidebarItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: Material(
-        color: active ? Colors.white.withValues(alpha: 0.16) : Colors.transparent,
+        color: active
+            ? Colors.white.withValues(alpha: 0.16)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -288,14 +275,12 @@ class _StudentTopbar extends StatelessWidget {
     required this.isDesktop,
     required this.onMenuTap,
     required this.onToggleTheme,
-    required this.onLogout,
   });
 
   final String title;
   final bool isDesktop;
   final VoidCallback onMenuTap;
   final VoidCallback onToggleTheme;
-  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -321,10 +306,6 @@ class _StudentTopbar extends StatelessWidget {
           IconButton(
             onPressed: onToggleTheme,
             icon: const Icon(Icons.brightness_6_outlined),
-          ),
-          IconButton(
-            onPressed: onLogout,
-            icon: const Icon(Icons.logout_rounded),
           ),
           CircleAvatar(
             backgroundColor: kStudentPrimary.withValues(alpha: 0.1),
@@ -432,9 +413,9 @@ class _DashboardState extends State<_Dashboard> {
     setState(() => _resubmittingId = null);
 
     if (!res.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(res.error ?? 'Resubmit failed')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(res.error ?? 'Resubmit failed')));
       return;
     }
 
@@ -450,19 +431,23 @@ class _DashboardState extends State<_Dashboard> {
     final scheme = Theme.of(context).colorScheme;
     final name = AuthStore.fullName ?? 'Student';
     final sp = AuthStore.studentProfile;
-    final section = sp?['section']?.toString() ??
+    final section =
+        sp?['section']?.toString() ??
         sp?['class']?.toString() ??
         sp?['department']?.toString() ??
         '';
-    final welcomeSub =
-        section.isNotEmpty ? 'Welcome, $name ($section)' : 'Welcome, $name';
+    final welcomeSub = section.isNotEmpty
+        ? 'Welcome, $name ($section)'
+        : 'Welcome, $name';
     final activeSessionName =
-      ((_activeSession?['session'] as Map?)?['event_name']?.toString().trim() ??
-          '')
-        .trim();
+        ((_activeSession?['session'] as Map?)?['event_name']
+                    ?.toString()
+                    .trim() ??
+                '')
+            .trim();
     final sessionLabel = activeSessionName.isNotEmpty
-      ? activeSessionName
-      : 'Active OD session';
+        ? activeSessionName
+        : 'Active OD session';
 
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _futureRequests,
@@ -485,7 +470,8 @@ class _DashboardState extends State<_Dashboard> {
                       constraints: const BoxConstraints(maxWidth: 1040),
                       child: Builder(
                         builder: (context) {
-                          final requests = snapshot.data ?? const <Map<String, dynamic>>[];
+                          final requests =
+                              snapshot.data ?? const <Map<String, dynamic>>[];
                           final total = requests.length;
                           var approved = 0;
                           var rejected = 0;
@@ -514,11 +500,18 @@ class _DashboardState extends State<_Dashboard> {
                                 welcomeSub,
                                 style: TextStyle(
                                   fontSize: 15,
-                                  color: scheme.onSurface.withValues(alpha: 0.72),
+                                  color: scheme.onSurface.withValues(
+                                    alpha: 0.72,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 20),
-                              _buildStatsRow(total, approved, pending, rejected),
+                              _buildStatsRow(
+                                total,
+                                approved,
+                                pending,
+                                rejected,
+                              ),
                               const SizedBox(height: 16),
                               if (_activeSession?['has_active_session'] == true)
                                 Container(
@@ -526,12 +519,19 @@ class _DashboardState extends State<_Dashboard> {
                                   padding: const EdgeInsets.all(14),
                                   decoration: BoxDecoration(
                                     color: scheme.secondaryContainer,
-                                    border: Border.all(color: scheme.secondary.withValues(alpha: 0.5)),
+                                    border: Border.all(
+                                      color: scheme.secondary.withValues(
+                                        alpha: 0.5,
+                                      ),
+                                    ),
                                     borderRadius: BorderRadius.circular(16),
                                   ),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.check_circle, color: scheme.onSecondaryContainer),
+                                      Icon(
+                                        Icons.check_circle,
+                                        color: scheme.onSecondaryContainer,
+                                      ),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
@@ -549,15 +549,27 @@ class _DashboardState extends State<_Dashboard> {
                                 Container(
                                   width: double.infinity,
                                   padding: const EdgeInsets.all(14),
-                                  decoration: portalCardDecoration(context, radius: 16),
+                                  decoration: portalCardDecoration(
+                                    context,
+                                    radius: 16,
+                                  ),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.info_outline, color: scheme.onSurface.withValues(alpha: 0.72)),
+                                      Icon(
+                                        Icons.info_outline,
+                                        color: scheme.onSurface.withValues(
+                                          alpha: 0.72,
+                                        ),
+                                      ),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
                                           'No active OD session',
-                                          style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.72)),
+                                          style: TextStyle(
+                                            color: scheme.onSurface.withValues(
+                                              alpha: 0.72,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -607,14 +619,7 @@ class _DashboardState extends State<_Dashboard> {
     return Wrap(
       spacing: 12,
       runSpacing: 12,
-      children: cards
-          .map(
-            (card) => SizedBox(
-              width: 220,
-              child: card,
-            ),
-          )
-          .toList(),
+      children: cards.map((card) => SizedBox(width: 220, child: card)).toList(),
     );
   }
 
@@ -624,9 +629,7 @@ class _DashboardState extends State<_Dashboard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6),
-        ],
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -684,10 +687,7 @@ class _DashboardState extends State<_Dashboard> {
             const SizedBox(height: 8),
             Text('Reason: $reason'),
             const SizedBox(height: 8),
-            Text(
-              suggestion,
-              style: const TextStyle(color: Colors.orange),
-            ),
+            Text(suggestion, style: const TextStyle(color: Colors.orange)),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: isBusy ? null : () => _resubmit(item),
@@ -746,39 +746,12 @@ class _DashboardState extends State<_Dashboard> {
   }
 
   Widget _buildRequestsSection(List<Map<String, dynamic>> requests) {
-    if (requests.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.inbox, size: 40, color: Colors.grey),
-            SizedBox(height: 12),
-            Text(
-              'No OD requests yet — use New OD to submit.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
           'OD Requests',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
         Text(
@@ -786,77 +759,85 @@ class _DashboardState extends State<_Dashboard> {
           style: const TextStyle(color: Colors.grey),
         ),
         const SizedBox(height: 16),
-        ...requests.map((r) {
-          final status = r['status']?.toString() ?? 'Pending';
-          final event = r['event_name']?.toString() ?? 'Untitled event';
-          final datetime = r['datetime']?.toString() ?? '---';
-          final venue = r['venue']?.toString() ?? '---';
-          final statusColor = status == 'Approved'
-              ? Colors.green
-              : status == 'Rejected'
-                  ? Colors.red
-                  : Colors.orange;
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(22),
-            constraints: const BoxConstraints(minHeight: 170),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE6ECF5)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x14000000),
-                  blurRadius: 10,
-                  offset: Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  event,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 18,
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('od_requests')
+              .where('student_id', isEqualTo: AuthStore.userId ?? '')
+              .orderBy('created_at', descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
                   ),
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  datetime,
-                  style: const TextStyle(fontSize: 15),
+                child: const Text(
+                  'Unable to load OD requests right now.',
+                  style: TextStyle(color: Colors.redAccent),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  venue,
-                  style: const TextStyle(fontSize: 15),
+              );
+            }
+
+            final docs = snapshot.data?.docs ?? const [];
+            if (docs.isEmpty) {
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 40,
                 ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(999),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
                   ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
+                ),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.inbox, size: 40, color: Colors.grey),
+                    SizedBox(height: 12),
+                    Text(
+                      'No OD requests yet — use New OD to submit.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          );
-        }),
+              );
+            }
+
+            return Column(
+              children: docs.map((doc) {
+                final data = doc.data();
+                final item = <String, dynamic>{
+                  ...data,
+                  'id': data['id']?.toString().isNotEmpty == true
+                      ? data['id']
+                      : doc.id,
+                };
+                return PortalRequestCard(r: item);
+              }).toList(),
+            );
+          },
+        ),
       ],
     );
   }
-
 }
 
 // ── NEW OD FORM ───────────────────────────────────────────────────────────────
@@ -874,6 +855,7 @@ class _NewODPageState extends State<_NewODPage> {
   final TextEditingController venueController = TextEditingController();
   final TextEditingController organizerController = TextEditingController();
   final TextEditingController reasonController = TextEditingController();
+  final TextEditingController dateTimeController = TextEditingController();
   DateTime? selectedDateTime;
 
   // File attachment
@@ -885,9 +867,9 @@ class _NewODPageState extends State<_NewODPage> {
   bool _submitting = false;
 
   OutlineInputBorder _border(Color c) => OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: c),
-      );
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: c),
+  );
 
   @override
   void initState() {
@@ -900,6 +882,7 @@ class _NewODPageState extends State<_NewODPage> {
     venueController.dispose();
     organizerController.dispose();
     reasonController.dispose();
+    dateTimeController.dispose();
     super.dispose();
   }
 
@@ -927,13 +910,6 @@ class _NewODPageState extends State<_NewODPage> {
       return;
     }
 
-    if (!_isValidTime(selectedDateTime!)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('OD must be between 8 AM and 5 PM')),
-      );
-      return;
-    }
-
     final validation = OdRuleEngine.validateApplication(
       startDateTime: selectedDateTime!,
       endDateTime: selectedDateTime!,
@@ -957,7 +933,7 @@ class _NewODPageState extends State<_NewODPage> {
     try {
       await FirebaseFirestore.instance.collection('od_requests').add({
         'event_name': eventNameController.text.trim(),
-        'datetime': selectedDateTime,
+        'datetime': selectedDateTime!.toIso8601String(),
         'start_datetime': selectedDateTime!.toIso8601String(),
         'venue': venueController.text.trim(),
         'organizer': organizerController.text.trim(),
@@ -987,6 +963,7 @@ class _NewODPageState extends State<_NewODPage> {
         venueController.clear();
         organizerController.clear();
         reasonController.clear();
+        dateTimeController.clear();
         _fileName = null;
         _fileBase64 = null;
         selectedDateTime = null;
@@ -1007,58 +984,46 @@ class _NewODPageState extends State<_NewODPage> {
     }
   }
 
-  bool _isValidTime(DateTime selectedDateTime) {
-    final hour = selectedDateTime.hour;
-    return hour >= 8 && hour < 17;
-  }
-
   void _err(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: Colors.red.shade700,
-        ),
-      );
+      SnackBar(content: Text(msg), backgroundColor: Colors.red.shade700),
+    );
   }
 
-    Future<void> pickDateTime(BuildContext context) async {
-      final date = await showDatePicker(
-        context: context,
-        initialDate: DateTime.now(),
-        firstDate: DateTime(2024),
-        lastDate: DateTime(2100),
+  Future<void> pickDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2024),
+      lastDate: DateTime(2100),
+    );
+
+    if (date == null) return;
+
+    if (!context.mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+
+    if (time == null) return;
+
+    setState(() {
+      final finalDateTime = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
       );
+      selectedDateTime = finalDateTime;
+      dateTimeController.text = _formatDateTime(finalDateTime);
+    });
+  }
 
-      if (date == null) return;
-
-      if (!context.mounted) return;
-      final time = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.now(),
-      );
-
-      if (time == null) return;
-
-      setState(() {
-        selectedDateTime = DateTime(
-          date.year,
-          date.month,
-          date.day,
-          time.hour,
-          time.minute,
-        );
-      });
-    }
-
-    String _datetimeLabel() {
-      final value = selectedDateTime;
-      if (value == null) return 'No date and time selected';
-      final hour = value.hour.toString().padLeft(2, '0');
-      final minute = value.minute.toString().padLeft(2, '0');
-      final month = value.month.toString().padLeft(2, '0');
-      final day = value.day.toString().padLeft(2, '0');
-      return '${value.year}-$month-$day $hour:$minute';
-    }
+  String _formatDateTime(DateTime value) {
+    return DateFormat('dd MMM yyyy, hh:mm a').format(value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1076,16 +1041,15 @@ class _NewODPageState extends State<_NewODPage> {
                 children: [
                   const Text(
                     'Create OD request',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Mentor → HoD',
                     style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.72),
                       fontSize: 15,
                     ),
                   ),
@@ -1097,214 +1061,214 @@ class _NewODPageState extends State<_NewODPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                const Text(
-                  'Event details',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'All fields marked * are required',
-                  style: TextStyle(color: Colors.grey, fontSize: 13),
-                ),
-                const SizedBox(height: 18),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: TextFormField(
-                    controller: eventNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Event Name',
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Date & Time *',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: () => pickDateTime(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: kBlue,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                        const Text(
+                          'Event details',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
-                          child: const Text(
-                            'Select Date & Time',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'All fields marked * are required',
+                          style: TextStyle(color: Colors.grey, fontSize: 13),
+                        ),
+                        const SizedBox(height: 18),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: TextFormField(
+                            controller: eventNameController,
+                            decoration: InputDecoration(
+                              labelText: 'Event Name',
+                              border: const OutlineInputBorder(),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _datetimeLabel(),
-                        style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.72),
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _field('Venue *', venueController, 'e.g. Anna University, Chennai'),
-                _field('Organizer *', organizerController, 'e.g. IEEE Chennai Section'),
-                const SizedBox(height: 16),
-                // ── File attachment ────────────────────────────────────────
-                const Text(
-                  'Supporting Document',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Brochure, proof of participation (PDF / JPG / PNG, max 5 MB)',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                const SizedBox(height: 8),
-                _fileName == null
-                    ? GestureDetector(
-                    onTap: _fileLoading ? null : _pickFile,
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 20),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: kBlue.withValues(alpha: 0.4),
-                              style: BorderStyle.solid,
-                              width: 1.5,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            color: kBlue.withValues(alpha: 0.03),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Date & Time *',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: dateTimeController,
+                                readOnly: true,
+                                onTap: pickDateTime,
+                                decoration: InputDecoration(
+                                  hintText: 'Select Date & Time',
+                                  border: _border(Colors.grey),
+                                  enabledBorder: _border(Colors.grey),
+                                  focusedBorder: _border(kBlue),
+                                  suffixIcon: const Icon(
+                                    Icons.calendar_today_outlined,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          child: _fileLoading
-                              ? const Center(child: CircularProgressIndicator())
-                              : const Column(
+                        ),
+                        _field(
+                          'Venue *',
+                          venueController,
+                          'e.g. Anna University, Chennai',
+                        ),
+                        _field(
+                          'Organizer *',
+                          organizerController,
+                          'e.g. IEEE Chennai Section',
+                        ),
+                        const SizedBox(height: 16),
+                        // ── File attachment ────────────────────────────────────────
+                        const Text(
+                          'Supporting Document',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Brochure, proof of participation (PDF / JPG / PNG, max 5 MB)',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                        const SizedBox(height: 8),
+                        _fileName == null
+                            ? GestureDetector(
+                                onTap: _fileLoading ? null : _pickFile,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 20,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: kBlue.withValues(alpha: 0.4),
+                                      style: BorderStyle.solid,
+                                      width: 1.5,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: kBlue.withValues(alpha: 0.03),
+                                  ),
+                                  child: _fileLoading
+                                      ? const Center(
+                                          child: CircularProgressIndicator(),
+                                        )
+                                      : const Column(
+                                          children: [
+                                            Icon(
+                                              Icons.upload_file,
+                                              size: 36,
+                                              color: kBlue,
+                                            ),
+                                            SizedBox(height: 8),
+                                            Text(
+                                              'Click to attach file',
+                                              style: TextStyle(
+                                                color: kBlue,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            Text(
+                                              'PDF, JPG or PNG',
+                                              style: TextStyle(
+                                                color: Colors.grey,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                ),
+                              )
+                            : Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade50,
+                                  border: Border.all(
+                                    color: Colors.green.shade300,
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
                                   children: [
-                                    Icon(Icons.upload_file,
-                                        size: 36, color: kBlue),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      'Click to attach file',
-                                      style: TextStyle(
-                                        color: kBlue,
-                                        fontWeight: FontWeight.w600,
+                                    const Icon(
+                                      Icons.insert_drive_file,
+                                      color: Colors.green,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        _fileName!,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    Text(
-                                      'PDF, JPG or PNG',
-                                      style: TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 12,
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.red,
+                                        size: 18,
                                       ),
+                                      onPressed: () => setState(() {
+                                        _fileName = null;
+                                        _fileBase64 = null;
+                                        _fileMime = null;
+                                      }),
                                     ),
                                   ],
                                 ),
+                              ),
+                        const SizedBox(height: 16),
+                        _field(
+                          'Reason *',
+                          reasonController,
+                          'Why are you attending?',
+                          maxLines: 3,
                         ),
-                      )
-                    : Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          border: Border.all(color: Colors.green.shade300),
-                          borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Your request goes: Mentor → HoD',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.insert_drive_file,
-                              color: Colors.green,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                _fileName!,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _submitting ? null : _submit,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: kBlue,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.close,
-                                color: Colors.red,
-                                size: 18,
-                              ),
-                              onPressed: () => setState(() {
-                                _fileName = null;
-                                _fileBase64 = null;
-                                _fileMime = null;
-                              }),
-                            ),
-                          ],
-                        ),
-                      ),
-                const SizedBox(height: 16),
-                _field(
-                  'Reason *',
-                  reasonController,
-                  'Why are you attending?',
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Your request goes: Mentor → HoD',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: _submitting ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kBlue,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text(
-                            'Submit OD request',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            child: _submitting
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Submit OD request',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                           ),
-                  ),
-                ),
+                        ),
                       ],
                     ),
                   ),
@@ -1322,33 +1286,29 @@ class _NewODPageState extends State<_NewODPage> {
     TextEditingController ctrl,
     String hint, {
     int maxLines = 1,
-  }) =>
-      Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: ctrl,
-              maxLines: maxLines,
-              decoration: InputDecoration(
-                hintText: hint,
-                border: _border(Colors.grey),
-                enabledBorder: _border(Colors.grey),
-                focusedBorder: _border(kBlue),
-              ),
-            ),
-          ],
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
         ),
-      );
+        const SizedBox(height: 8),
+        TextField(
+          controller: ctrl,
+          maxLines: maxLines,
+          decoration: InputDecoration(
+            hintText: hint,
+            border: _border(Colors.grey),
+            enabledBorder: _border(Colors.grey),
+            focusedBorder: _border(kBlue),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Future<void> _pickFile() async {
     setState(() => _fileLoading = true);
@@ -1517,9 +1477,7 @@ class _HistoryPageState extends State<_HistoryPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    ..._items.map(
-                      (r) => PortalRequestCard(r: r as Map),
-                    ),
+                    ..._items.map((r) => PortalRequestCard(r: r as Map)),
                   ],
                 ),
               ),
@@ -1556,10 +1514,7 @@ class _ProfilePage extends StatelessWidget {
             children: [
               const Text(
                 'Profile',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
               Container(
@@ -1596,21 +1551,18 @@ class _ProfilePage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              _infoCard(
-                context,
-                [
-                  ('Department', sp['department'] ?? '—'),
-                  ('Section', sp['section'] ?? '—'),
-                  ('Semester', sp['semester']?.toString() ?? '—'),
-                  ('Batch', sp['batch']?.toString() ?? '—'),
-                  (
-                    'Attendance',
-                    sp['attendance_percent'] != null
-                        ? '${sp['attendance_percent']}%'
-                        : '—',
-                  ),
-                ],
-              ),
+              _infoCard(context, [
+                ('Department', sp['department'] ?? '—'),
+                ('Section', sp['section'] ?? '—'),
+                ('Semester', sp['semester']?.toString() ?? '—'),
+                ('Batch', sp['batch']?.toString() ?? '—'),
+                (
+                  'Attendance',
+                  sp['attendance_percent'] != null
+                      ? '${sp['attendance_percent']}%'
+                      : '—',
+                ),
+              ]),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -1632,9 +1584,7 @@ class _ProfilePage extends StatelessWidget {
                     AuthStore.clear();
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => const ODLoginUI(),
-                      ),
+                      MaterialPageRoute(builder: (_) => const ODLoginUI()),
                     );
                   },
                 ),
@@ -1646,39 +1596,36 @@ class _ProfilePage extends StatelessWidget {
     );
   }
 
-    Widget _infoCard(BuildContext context, List<(String, String)> rows) => Container(
-      decoration: portalCardDecoration(context, radius: 16),
-        child: Column(
-          children: List.generate(
-            rows.length,
-            (i) => Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+  Widget _infoCard(
+    BuildContext context,
+    List<(String, String)> rows,
+  ) => Container(
+    decoration: portalCardDecoration(context, radius: 16),
+    child: Column(
+      children: List.generate(
+        rows.length,
+        (i) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(rows[i].$1, style: const TextStyle(color: Colors.grey)),
+                  Text(
+                    rows[i].$2,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        rows[i].$1,
-                        style: const TextStyle(color: Colors.grey),
-                      ),
-                      Text(
-                        rows[i].$2,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-                if (i < rows.length - 1)
-                  const Divider(height: 1, indent: 16, endIndent: 16),
-              ],
+                ],
+              ),
             ),
-          ),
+            if (i < rows.length - 1)
+              const Divider(height: 1, indent: 16, endIndent: 16),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 // ── SHARED WIDGETS ─────────────────────────────────────────────────────────────
@@ -1690,31 +1637,30 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.wifi_off, size: 64, color: Colors.grey),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kBlue,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.wifi_off, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.grey),
           ),
-        ),
-      );
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kBlue,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
-

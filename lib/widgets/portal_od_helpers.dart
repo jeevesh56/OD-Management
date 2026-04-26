@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 String portalOdDateLabel(dynamic start, dynamic end) {
   final a = start?.toString() ?? '';
@@ -6,6 +8,22 @@ String portalOdDateLabel(dynamic start, dynamic end) {
   if (a.isEmpty && b.isEmpty) return '—';
   if (a == b || b.isEmpty) return a;
   return '$a – $b';
+}
+
+DateTime? portalToDateTime(dynamic value) {
+  if (value == null) return null;
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  if (value is String && value.isNotEmpty) {
+    return DateTime.tryParse(value);
+  }
+  return null;
+}
+
+String portalOdDateTime(dynamic value) {
+  final dt = portalToDateTime(value);
+  if (dt == null) return value?.toString() ?? '—';
+  return DateFormat('dd MMM yyyy, hh:mm a').format(dt);
 }
 
 String portalOdStatusLabel(String status) {
@@ -59,15 +77,7 @@ Color portalOdStatusColor(String status) {
 }
 
 String portalOdShortDate(String raw) {
-  if (raw.length >= 10 && raw.contains('-')) {
-    try {
-      final d = DateTime.parse(raw);
-      const m = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-      ];
-      return '${d.day} ${m[d.month - 1]} ${d.year}';
-    } catch (_) {}
-  }
-  return raw;
+  final d = portalToDateTime(raw);
+  if (d == null) return raw;
+  return DateFormat('dd MMM yyyy').format(d);
 }

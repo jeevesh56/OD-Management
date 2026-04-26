@@ -120,7 +120,9 @@ class AuthStore {
     studentLoginEmail = null;
   }
 
-  static Map<String, String> get headers => {'Content-Type': 'application/json'};
+  static Map<String, String> get headers => {
+    'Content-Type': 'application/json',
+  };
 }
 
 class ApiResult<T> {
@@ -141,10 +143,15 @@ class _FirestoreApi {
   static String normalizeStatus(Map<String, dynamic> row) {
     final raw = row['status']?.toString().trim() ?? '';
     final upper = raw.toUpperCase();
+    final fullyApproved =
+        row['mentor_approved'] == true &&
+        row['hod_approved'] == true &&
+        row['principal_approved'] == true;
 
     if (upper == 'APPROVED' ||
         upper == 'PRINCIPAL_APPROVED' ||
-        row['principal_approved'] == true) {
+        row['principal_approved'] == true ||
+        fullyApproved) {
       return 'Approved';
     }
     if (upper == 'REJECTED' || upper.contains('REJECTED')) {
@@ -287,7 +294,9 @@ class OdApi {
     }
   }
 
-  static Future<ApiResult<Map>> resubmitRequest(Map<dynamic, dynamic> item) async {
+  static Future<ApiResult<Map>> resubmitRequest(
+    Map<dynamic, dynamic> item,
+  ) async {
     final id = item['id']?.toString() ?? '';
     if (id.isEmpty) {
       return ApiResult.fail('Invalid request id for resubmission.');
@@ -445,10 +454,12 @@ class HoDApi {
   static Future<ApiResult<Map>> analytics() async {
     final items = await _FirestoreApi.allRequests();
     final total = items.length;
-    final approved =
-        items.where((e) => (e['status']?.toString() ?? '') == 'Approved').length;
-    final rejected =
-        items.where((e) => (e['status']?.toString() ?? '') == 'Rejected').length;
+    final approved = items
+        .where((e) => (e['status']?.toString() ?? '') == 'Approved')
+        .length;
+    final rejected = items
+        .where((e) => (e['status']?.toString() ?? '') == 'Rejected')
+        .length;
 
     return ApiResult.success({
       'total': total,
@@ -530,7 +541,8 @@ class PrincipalApi {
       try {
         final row = await _FirestoreApi.requestById(id);
         if (row == null) continue;
-        final eligible = row['hod_approved'] == true &&
+        final eligible =
+            row['hod_approved'] == true &&
             row['principal_approved'] != true &&
             row['status'] != 'Rejected';
         if (!eligible) continue;
@@ -546,12 +558,25 @@ class PrincipalApi {
       }
     }
 
-    return ApiResult.success({'message': '$count requests approved', 'count': count});
+    return ApiResult.success({
+      'message': '$count requests approved',
+      'count': count,
+    });
+  }
+
+  static Future<ApiResult<List>> history() async {
+    try {
+      return ApiResult.success(await _FirestoreApi.allRequests());
+    } catch (e) {
+      return ApiResult.fail('Failed to load history: $e');
+    }
   }
 }
 
 class VerifyApi {
   static Future<ApiResult<Map>> scan(String uniqueId) async {
-    return ApiResult.fail('QR verification backend removed; use Firebase flow.');
+    return ApiResult.fail(
+      'QR verification backend removed; use Firebase flow.',
+    );
   }
 }

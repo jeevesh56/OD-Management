@@ -17,8 +17,8 @@ class PortalStatusTimelineScreen extends StatelessWidget {
     final title = request['event_name']?.toString() ?? 'OD request';
     final status = request['status']?.toString() ?? '';
     final badgeColor = portalOdStatusColor(status);
-    final schedule = request['datetime']?.toString().isNotEmpty == true
-        ? request['datetime'].toString()
+    final schedule = request['datetime'] != null
+        ? portalOdDateTime(request['datetime'])
         : portalOdDateLabel(request['start_date'], request['end_date']);
 
     return Scaffold(

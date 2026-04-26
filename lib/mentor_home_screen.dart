@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
+import 'widgets/portal_od_helpers.dart';
 import 'widgets/role_profile_widgets.dart';
 
 const Color kMentorPrimary = Color(0xFF1257B0);
@@ -144,7 +145,9 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       drawer: desktop
           ? null
-          : Drawer(child: _Sidebar(current: _section, onTap: _onTapSection)),
+          : Drawer(
+              child: _Sidebar(current: _section, onTap: _onTapSection),
+            ),
       body: SafeArea(
         child: Row(
           children: [
@@ -161,21 +164,25 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
                     isDesktop: desktop,
                     onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
                     onToggleTheme: ThemeController.toggle,
-                    onLogout: _logout,
                   ),
                   Expanded(
                     child: _loading
                         ? const Center(child: CircularProgressIndicator())
                         : _error != null
-                            ? _ErrorPanel(error: _error!, onRetry: _loadAll)
-                            : RefreshIndicator(
-                                onRefresh: _loadAll,
-                                child: SingleChildScrollView(
-                                  physics: const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-                                  child: _contentBySection(),
-                                ),
+                        ? _ErrorPanel(error: _error!, onRetry: _loadAll)
+                        : RefreshIndicator(
+                            onRefresh: _loadAll,
+                            child: SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                20,
+                                20,
+                                28,
                               ),
+                              child: _contentBySection(),
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -231,8 +238,8 @@ class _Sidebar extends StatelessWidget {
     final roleLabel = (AuthStore.role ?? 'mentor').toLowerCase() == 'hod'
         ? 'HOD Panel'
         : (AuthStore.role ?? 'mentor').toLowerCase() == 'principal'
-            ? 'Principal Panel'
-            : 'Mentor Panel';
+        ? 'Principal Panel'
+        : 'Mentor Panel';
 
     return Container(
       color: kMentorSidebar,
@@ -349,7 +356,9 @@ class _SidebarItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: Material(
-        color: active ? Colors.white.withValues(alpha: 0.16) : Colors.transparent,
+        color: active
+            ? Colors.white.withValues(alpha: 0.16)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -382,14 +391,12 @@ class _Topbar extends StatelessWidget {
     required this.isDesktop,
     required this.onMenuTap,
     required this.onToggleTheme,
-    required this.onLogout,
   });
 
   final String title;
   final bool isDesktop;
   final VoidCallback onMenuTap;
   final VoidCallback onToggleTheme;
-  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -414,10 +421,6 @@ class _Topbar extends StatelessWidget {
           IconButton(
             onPressed: onToggleTheme,
             icon: const Icon(Icons.brightness_6_outlined),
-          ),
-          IconButton(
-            onPressed: onLogout,
-            icon: const Icon(Icons.logout_rounded),
           ),
           CircleAvatar(
             backgroundColor: kMentorPrimary.withValues(alpha: 0.1),
@@ -444,19 +447,21 @@ class _DashboardPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = AuthStore.fullName ?? 'Mentor';
     final dept = AuthStore.userDepartment ?? 'Department';
-    final pending = queue.where((e) => (e['status']?.toString() ?? '') == 'Pending').length;
-    final approved = history.where((e) => (e['status']?.toString() ?? '') == 'Approved').length;
-    final rejected = history.where((e) => (e['status']?.toString() ?? '') == 'Rejected').length;
-    final total = pending + approved + rejected;
+    final pending = history
+        .where((e) => (e['status']?.toString() ?? '') == 'Pending')
+        .length;
+    final approved = history
+        .where((e) => (e['status']?.toString() ?? '') == 'Approved')
+        .length;
+    final rejected = history
+        .where((e) => (e['status']?.toString() ?? '') == 'Rejected')
+        .length;
+    final total = history.length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        RoleProfileCard(
-          name: name,
-          role: 'Mentor',
-          subtitle: dept,
-        ),
+        RoleProfileCard(name: name, role: 'Mentor', subtitle: dept),
         DashboardStatGrid(
           items: [
             DashboardStatItem(
@@ -622,7 +627,12 @@ class _ODRequestCard extends StatelessWidget {
         final bytes = base64Decode(b64);
         return ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          child: Image.memory(bytes, height: 170, width: double.infinity, fit: BoxFit.cover),
+          child: Image.memory(
+            bytes,
+            height: 170,
+            width: double.infinity,
+            fit: BoxFit.cover,
+          ),
         );
       } catch (_) {
         return const Text('Unable to decode image proof.');
@@ -630,7 +640,9 @@ class _ODRequestCard extends StatelessWidget {
     }
 
     if (mime == 'application/pdf') {
-      return const Text('PDF proof attached (upload URL required for web preview).');
+      return const Text(
+        'PDF proof attached (upload URL required for web preview).',
+      );
     }
 
     return const Text('Unsupported proof format.');
@@ -639,9 +651,10 @@ class _ODRequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final eventName = row['event_name']?.toString() ?? 'Untitled event';
-    final datetime = row['datetime']?.toString() ?? '---';
+    final datetime = portalOdDateTime(row['datetime']);
     final venue = row['venue']?.toString() ?? '---';
-    final organizer = row['organizer']?.toString() ?? row['organiser']?.toString() ?? '---';
+    final organizer =
+        row['organizer']?.toString() ?? row['organiser']?.toString() ?? '---';
     final reason = row['reason']?.toString() ?? '---';
     final fileUrl = row['file_url']?.toString() ?? '';
 
@@ -683,7 +696,9 @@ class _ODRequestCard extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 8),
-                fileUrl.isNotEmpty ? _buildFilePreview(context, fileUrl) : _buildLegacyPreview(),
+                fileUrl.isNotEmpty
+                    ? _buildFilePreview(context, fileUrl)
+                    : _buildLegacyPreview(),
               ],
             ),
           ),
@@ -698,7 +713,9 @@ class _ODRequestCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                  ),
                   onPressed: onApprove,
                   child: const Text('Approve'),
                 ),
