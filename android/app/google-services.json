@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "523686545504",
+    "project_id": "od-management-59dbc",
+    "storage_bucket": "od-management-59dbc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:523686545504:android:d0bf54240581875e2a5b05",
+        "android_client_info": {
+          "package_name": "com.example.od"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAu6nyooeyCCEhQPfp6hKVthfjsTAxnIAk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

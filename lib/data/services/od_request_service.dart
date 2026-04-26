@@ -58,6 +58,15 @@ class OdRequestService {
       ]);
     }
 
+    if (request.expired || request.status == OdStatus.expired) {
+      return const RuleValidationResult([
+        RuleViolation(
+          code: 'REQUEST_EXPIRED',
+          message: 'Action closed. This OD request is expired.',
+        ),
+      ]);
+    }
+
     if (!isApproved) {
       final reasonValidation = OdRuleEngine.validateRejectionReason(reason);
       if (!reasonValidation.isValid) return reasonValidation;
@@ -85,6 +94,8 @@ class OdRequestService {
       reason: request.reason,
       proofUrl: request.proofUrl,
       status: nextStatus,
+      expired: request.expired,
+      isPinned: request.isPinned,
       createdAt: request.createdAt,
       updatedAt: DateTime.now(),
     );

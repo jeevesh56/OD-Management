@@ -1,23 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
+import 'firebase_options.dart';
 import 'presentation/app/app_providers.dart';
-import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  var firebaseEnabled = true;
-  try {
-    await Firebase.initializeApp();
-  } catch (_) {
-    // Fallback keeps web/app usable until Firebase web options are configured.
-    firebaseEnabled = false;
-  }
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  await FirebaseFirestore.instance
+      .collection('test')
+      .add({'msg': 'Firebase connected'});
   runApp(
     ProviderScope(
-      child: MyApp(firebaseEnabled: firebaseEnabled),
+      child: const MyApp(),
     ),
   );
 }
@@ -35,26 +36,35 @@ class ThemeController {
   }
 }
 
-class MyApp extends ConsumerWidget {
-  const MyApp({super.key, required this.firebaseEnabled});
-
-  final bool firebaseEnabled;
+class MyApp extends ConsumerStatefulWidget {
+  const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (!firebaseEnabled) {
-      return MaterialApp(
-        title: 'OD Management System',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: ThemeMode.light,
-        themeAnimationDuration: const Duration(milliseconds: 220),
-        themeAnimationCurve: Curves.easeInOut,
-        home: const ODLoginUI(),
-      );
-    }
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
 
+class _MyAppState extends ConsumerState<MyApp> {
+  Timer? _expiryTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.microtask(() async {
+      await ref.read(requestLifecycleServiceProvider).checkAndExpireRequests();
+      _expiryTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+        ref.read(requestLifecycleServiceProvider).checkAndExpireRequests();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _expiryTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp.router(
       title: 'OD Management System',
       debugShowCheckedModeBanner: false,

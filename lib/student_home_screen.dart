@@ -4,6 +4,7 @@
 // ignore: deprecated_member_use
 import 'dart:html' as html;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'api_service.dart';
@@ -926,6 +927,13 @@ class _NewODPageState extends State<_NewODPage> {
       return;
     }
 
+    if (!_isValidTime(selectedDateTime!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('OD must be between 8 AM and 5 PM')),
+      );
+      return;
+    }
+
     final validation = OdRuleEngine.validateApplication(
       startDateTime: selectedDateTime!,
       endDateTime: selectedDateTime!,
@@ -946,23 +954,34 @@ class _NewODPageState extends State<_NewODPage> {
       reason += '\n[Attachment: $_fileName]';
     }
 
-    final datetime = selectedDateTime!.toIso8601String();
+    try {
+      await FirebaseFirestore.instance.collection('od_requests').add({
+        'event_name': eventNameController.text.trim(),
+        'datetime': selectedDateTime,
+        'start_datetime': selectedDateTime!.toIso8601String(),
+        'venue': venueController.text.trim(),
+        'organizer': organizerController.text.trim(),
+        'organiser': organizerController.text.trim(),
+        'reason': reason,
+        'file_url': '',
+        'attachment_base64': _fileBase64,
+        'attachment_mime': _fileMime,
+        'attachment_name': _fileName,
+        'status': 'Pending',
+        'mentor_approved': false,
+        'hod_approved': false,
+        'principal_approved': false,
+        'is_pinned': false,
+        'expired': false,
+        'created_at': FieldValue.serverTimestamp(),
+        'student_name': AuthStore.fullName ?? 'Student',
+        'student_id': AuthStore.userId ?? '',
+      });
+      debugPrint('OD stored successfully');
 
-    final r = await OdApi.submit(
-      eventName: eventNameController.text.trim(),
-      datetime: datetime,
-      venue: venueController.text.trim(),
-      organizer: organizerController.text.trim(),
-      reason: reason,
-      attachmentBase64: _fileBase64,
-      attachmentMime: _fileMime,
-      attachmentName: _fileName,
-    );
+      setState(() => _submitting = false);
+      if (!mounted) return;
 
-    setState(() => _submitting = false);
-
-    if (!mounted) return;
-    if (r.ok) {
       setState(() {
         eventNameController.clear();
         venueController.clear();
@@ -980,10 +999,17 @@ class _NewODPageState extends State<_NewODPage> {
       );
       // After successful submit, go back to dashboard where the OD is visible.
       widget.onSubmitted?.call();
-    } else {
-      final message = r.error ?? 'Submission failed';
-      _err(message);
+    } catch (e) {
+      debugPrint('Error submitting OD: $e');
+      setState(() => _submitting = false);
+      if (!mounted) return;
+      _err('Failed to submit OD: $e');
     }
+  }
+
+  bool _isValidTime(DateTime selectedDateTime) {
+    final hour = selectedDateTime.hour;
+    return hour >= 8 && hour < 17;
   }
 
   void _err(String msg) {

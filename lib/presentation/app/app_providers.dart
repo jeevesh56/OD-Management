@@ -14,9 +14,11 @@ import '../../data/services/document_store.dart';
 import '../../data/services/ec_request_service.dart';
 import '../../data/services/fcm_service.dart';
 import '../../data/services/firebase_document_store.dart';
+import '../../data/services/notification_service.dart';
 import '../../data/services/od_request_service.dart';
 import '../../data/services/pdf_export_service.dart';
 import '../../data/services/qr_verification_service.dart';
+import '../../data/services/request_lifecycle_service.dart';
 import '../../data/services/role_access_service.dart';
 import '../../data/services/timetable_engine_service.dart';
 import '../../domain/entities/app_user.dart';
@@ -24,6 +26,7 @@ import '../../domain/enums/user_role.dart';
 import '../../domain/repositories/approval_repository.dart';
 import '../../domain/repositories/od_request_repository.dart';
 import '../../domain/repositories/user_repository.dart';
+import '../../screens/login_screen.dart';
 import '../screens/auth/change_password_screen.dart';
 import '../screens/auth/firebase_login_screen.dart';
 import '../screens/profile/profile_screen.dart';
@@ -85,6 +88,14 @@ final fcmServiceProvider = Provider<FcmService>((ref) {
   );
 });
 
+final notificationServiceProvider = Provider<NotificationService>((ref) {
+  return NotificationService(ref.watch(firestoreProvider));
+});
+
+final requestLifecycleServiceProvider = Provider<RequestLifecycleService>((ref) {
+  return RequestLifecycleService(ref.watch(firestoreProvider));
+});
+
 final auditLogServiceProvider = Provider<AuditLogService>((ref) {
   return AuditLogService(ref.watch(documentStoreProvider));
 });
@@ -117,9 +128,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/login',
-        builder: (context, state) => FirebaseLoginScreen(
-          authService: ref.read(authServiceProvider),
-        ),
+        builder: (context, state) => const ODLoginUI(),
       ),
       GoRoute(
         path: '/change-password',

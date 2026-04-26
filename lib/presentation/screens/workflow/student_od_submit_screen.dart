@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../domain/entities/od_request.dart';
 import '../../../domain/enums/od_status.dart';
 import '../../../domain/enums/user_role.dart';
+import '../../../widgets/role_notifications_panel.dart';
 import '../../app/app_providers.dart';
 
 class StudentOdSubmitScreen extends ConsumerStatefulWidget {
@@ -99,6 +100,14 @@ class _StudentOdSubmitScreenState extends ConsumerState<StudentOdSubmitScreen> {
       return;
     }
 
+    await ref.read(notificationServiceProvider).sendNotification(
+          'mentor',
+          'New OD request submitted by ${user.fullName}',
+          requestId: request.id,
+          stage: 'student_submitted',
+          dedupeKey: '${request.id}_student_submitted_mentor',
+        );
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('OD submitted')),
     );
@@ -180,24 +189,46 @@ class _StudentOdSubmitScreenState extends ConsumerState<StudentOdSubmitScreen> {
             ),
           ),
           Expanded(
-            child: StreamBuilder<List<OdRequest>>(
-              stream: requestsStream,
-              builder: (context, snapshot) {
-                final items = snapshot.data ?? const <OdRequest>[];
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    return Card(
-                      child: ListTile(
-                        title: Text(item.eventName),
-                        subtitle: Text(item.status.value),
-                      ),
-                    );
-                  },
-                );
-              },
+            child: Column(
+              children: [
+                Expanded(
+                  child: StreamBuilder<List<OdRequest>>(
+                    stream: requestsStream,
+                    builder: (context, snapshot) {
+                      final items = snapshot.data ?? const <OdRequest>[];
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: items.length,
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          return Card(
+                            child: ListTile(
+                              title: Text(item.eventName),
+                              subtitle: Text(item.status.value),
+                              trailing: item.status == OdStatus.expired
+                                  ? const Text(
+                                      'Expired',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                const Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.all(12),
+                    child: RoleNotificationsPanel(currentRole: 'student'),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

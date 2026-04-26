@@ -12,6 +12,8 @@ class OdRequest {
     required this.isMultiDay,
     required this.reason,
     required this.status,
+    this.expired = false,
+    this.isPinned = false,
     this.proofUrl,
     this.createdAt,
     this.updatedAt,
@@ -28,6 +30,8 @@ class OdRequest {
   final String reason;
   final String? proofUrl;
   final OdStatus status;
+  final bool expired;
+  final bool isPinned;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 }

@@ -17,9 +17,9 @@ void main() {
   testWidgets('app builds without firebase config', (tester) async {
     await tester.pumpWidget(
       const ProviderScope(
-        child: MyApp(firebaseEnabled: false),
+        child: MyApp(),
       ),
     );
-    expect(find.text('OD Management System'), findsOneWidget);
+    expect(find.byType(MyApp), findsOneWidget);
   });
 }

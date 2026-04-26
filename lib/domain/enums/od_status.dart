@@ -6,6 +6,7 @@ enum OdStatus {
   hodRejected,
   principalApproved,
   principalRejected,
+  expired,
   cancelled,
 }
 
@@ -18,6 +19,7 @@ extension OdStatusX on OdStatus {
         OdStatus.hodRejected => 'HOD_REJECTED',
         OdStatus.principalApproved => 'PRINCIPAL_APPROVED',
         OdStatus.principalRejected => 'PRINCIPAL_REJECTED',
+        OdStatus.expired => 'EXPIRED',
         OdStatus.cancelled => 'CANCELLED',
       };
 

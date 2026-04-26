@@ -1,67 +1,14 @@
-import 'dart:convert';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 // Shared role colors used across OD Manager screens.
 const Color kBlue = Color(0xFF1565C0);
 const Color kRed = Color(0xFFB71C1C);
 
-// ── Local Flask backend URLs ─────────────────────────────────────────────────
-// Chrome (web):        http://127.0.0.1:5000
-// Android emulator:   http://10.0.2.2:5000
-// Real phone on WiFi: http://192.168.x.x:5000  ← your PC's local IP
-const String baseUrl = "http://127.0.0.1:5000";
-const String kBaseUrl = String.fromEnvironment(
-  'API_BASE_URL',
-  defaultValue: baseUrl,
-);
-
-/// Backend may return file paths like `/uploads/filename.ext`.
-/// Convert them into absolute URLs usable by Flutter widgets.
 String getFullUrl(String path) {
-  final trimmed = path.trim();
-  if (trimmed.isEmpty) return '';
-  final uri = Uri.tryParse(trimmed);
-  if (uri != null && uri.hasScheme) return trimmed;
-  return Uri.parse(kBaseUrl).resolve(trimmed).toString();
+  return path.trim();
 }
 
-// Enable with `--dart-define=USE_MOCK=true` when you want in-memory demo data.
-const bool kUseMockApi = bool.fromEnvironment(
-  'USE_MOCK',
-  defaultValue: false,
-);
-
-// When false (default), backend/network failures are surfaced as errors
-// instead of silently falling back to in-memory mock data.
-const bool kAllowOfflineFallback = bool.fromEnvironment(
-  'ALLOW_OFFLINE_FALLBACK',
-  defaultValue: false,
-);
-
-void _logApiError(String endpoint, Object error) {
-  debugPrint('[API ERROR] $endpoint -> $error');
-}
-
-void _logApiCall(String message) {
-  debugPrint('[API] $message');
-}
-
-String _errorFromBody(dynamic body, String fallback) {
-  if (body is Map) {
-    final detail = body['detail']?.toString();
-    if (detail != null && detail.isNotEmpty) return detail;
-    final error = body['error']?.toString();
-    if (error != null && error.isNotEmpty) return error;
-    final message = body['message']?.toString();
-    if (message != null && message.isNotEmpty) return message;
-  }
-  return fallback;
-}
-
-// ── Simple in-memory token store (no shared_preferences needed) ──────────────
-/// Fixed prefix for registration numbers; only last 3 digits vary (from email).
 const String kRegNumberPrefix = '2117240020';
 
 class AuthStore {
@@ -71,12 +18,8 @@ class AuthStore {
   static String? fullName;
   static String? userDepartment;
   static Map<String, dynamic>? studentProfile;
-
-  /// Set on student login; used to derive registration number for QR.
   static String? studentLoginEmail;
 
-  /// Full registration number from login email: prefix "2117240020" + last 3 digits of typed number.
-  /// e.g. jeevesh.240158@... → 2117240020158; 240160 → 2117240020160.
   static String registrationFromLoginEmail([String? email]) {
     final e = (email ?? studentLoginEmail ?? '').trim();
     if (e.isEmpty) return '';
@@ -124,7 +67,6 @@ class AuthStore {
     return raw.toUpperCase();
   }
 
-  /// Call when student signs in with college email (before opening StudentHomeScreen).
   static void applyStudentLogin(String email) {
     studentLoginEmail = email.trim();
     fullName = displayNameFromStudentEmail(email);
@@ -138,9 +80,9 @@ class AuthStore {
       'batch': '2024',
       'attendance_percent': '85',
     };
+    role = 'student';
   }
 
-  /// Simple helpers for staff names from the same email textbox.
   static void applyMentorLogin(String input) {
     final email = input.trim();
     fullName = email.contains('@') ? roleNameFromEmail(email) : 'Mentor';
@@ -178,62 +120,9 @@ class AuthStore {
     studentLoginEmail = null;
   }
 
-  static Map<String, String> get headers => {
-    'Content-Type': 'application/json',
-    if (token != null) 'Authorization': 'Bearer $token',
-  };
+  static Map<String, String> get headers => {'Content-Type': 'application/json'};
 }
 
-// Simple in-memory store used when kUseMockApi is true. This lets the full
-// OD life cycle (student → mentor → HoD → principal) work without a backend.
-class MockOdStore {
-  static int _nextId = 1;
-  static final List<Map<String, dynamic>> items = [];
-
-  static Map<String, dynamic> addRequest({
-    required String eventName,
-    required String organiser,
-    required String venue,
-    required String datetime,
-    required String reason,
-    String? eventId,
-    String? attachmentName,
-    String? attachmentMime,
-    String? attachmentBase64,
-  }) {
-    final id = (_nextId++).toString();
-    final request = <String, dynamic>{
-      'id': id,
-      'event_name': eventName,
-      'organiser': organiser,
-      'venue': venue,
-      'datetime': datetime,
-      'reason': reason,
-      'event_id': eventId,
-      'attachment_name': attachmentName,
-      'attachment_mime': attachmentMime,
-      'attachment_base64': attachmentBase64,
-      'status': 'Pending',
-      'mentor_approved': false,
-      'hod_approved': false,
-      'principal_approved': false,
-      'created_at': DateTime.now().toIso8601String(),
-      'student_name': AuthStore.fullName ?? 'Student',
-    };
-    items.insert(0, request);
-    return request;
-  }
-
-  static Map<String, dynamic>? byId(String id) {
-    try {
-      return items.firstWhere((r) => r['id'] == id);
-    } catch (_) {
-      return null;
-    }
-  }
-}
-
-// ── API RESULT wrapper ────────────────────────────────────────────────────────
 class ApiResult<T> {
   final T? data;
   final String? error;
@@ -243,67 +132,102 @@ class ApiResult<T> {
   ApiResult.fail(this.error) : data = null;
 }
 
-// ── AUTH ──────────────────────────────────────────────────────────────────────
+class _FirestoreApi {
+  static final FirebaseFirestore db = FirebaseFirestore.instance;
+
+  static CollectionReference<Map<String, dynamic>> get odRequests =>
+      db.collection('od_requests');
+
+  static String normalizeStatus(Map<String, dynamic> row) {
+    final raw = row['status']?.toString().trim() ?? '';
+    final upper = raw.toUpperCase();
+
+    if (upper == 'APPROVED' ||
+        upper == 'PRINCIPAL_APPROVED' ||
+        row['principal_approved'] == true) {
+      return 'Approved';
+    }
+    if (upper == 'REJECTED' || upper.contains('REJECTED')) {
+      return 'Rejected';
+    }
+    if (upper == 'EXPIRED' || row['expired'] == true) {
+      return 'Expired';
+    }
+    return 'Pending';
+  }
+
+  static Map<String, dynamic> normalizeDoc(
+    String id,
+    Map<String, dynamic> data,
+  ) {
+    final out = <String, dynamic>{'id': id, ...data};
+
+    final datetime = out['datetime']?.toString().trim();
+    if (datetime == null || datetime.isEmpty) {
+      out['datetime'] = out['start_datetime']?.toString() ?? '';
+    }
+
+    if ((out['organizer']?.toString().trim().isEmpty ?? true) &&
+        out['organiser'] != null) {
+      out['organizer'] = out['organiser'];
+    }
+
+    out['mentor_approved'] = out['mentor_approved'] == true;
+    out['hod_approved'] = out['hod_approved'] == true;
+    out['principal_approved'] = out['principal_approved'] == true;
+    out['status'] = normalizeStatus(out);
+    out['expired'] = out['status'] == 'Expired';
+    out['is_pinned'] = out['is_pinned'] == true;
+
+    return out;
+  }
+
+  static Future<List<Map<String, dynamic>>> allRequests() async {
+    final snap = await odRequests.orderBy('created_at', descending: true).get();
+    return snap.docs.map((d) => normalizeDoc(d.id, d.data())).toList();
+  }
+
+  static Future<Map<String, dynamic>?> requestById(String id) async {
+    final doc = await odRequests.doc(id).get();
+    if (!doc.exists) return null;
+    return normalizeDoc(doc.id, doc.data() ?? <String, dynamic>{});
+  }
+}
+
 class AuthApi {
   static Future<ApiResult<Map>> login({
     required String emailOrId,
     required String password,
     String role = 'student',
   }) async {
-    // Map register number / staff ID to email format for the backend
-    // Backend uses email — students log in with reg number as email prefix
-    final email = emailOrId.contains('@') ? emailOrId : '$emailOrId@rit.edu';
-
-    try {
-      final res = await http
-          .post(
-            Uri.parse('$kBaseUrl/api/auth/login'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'email': email, 'password': password}),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) {
-        AuthStore.token = body['access_token'];
-        AuthStore.role = body['user']['role'];
-        AuthStore.userId = body['user']['user_id'];
-        AuthStore.fullName = body['user']['full_name'];
-        AuthStore.studentProfile = body['student_profile'];
-        AuthStore.studentLoginEmail = email;
-        return ApiResult.success(body);
-      } else {
-        return ApiResult.fail(body['error'] ?? 'Login failed');
-      }
-    } catch (e) {
-      return ApiResult.fail('Cannot connect to server. Is Flask running?');
+    if (password.trim().isEmpty) {
+      return ApiResult.fail('Password cannot be empty');
     }
+
+    if (role == 'student') {
+      AuthStore.applyStudentLogin(emailOrId);
+    } else if (role == 'mentor') {
+      AuthStore.applyMentorLogin(emailOrId);
+    } else if (role == 'hod') {
+      AuthStore.applyHodLogin(emailOrId);
+    } else if (role == 'principal') {
+      AuthStore.applyPrincipalLogin(emailOrId);
+    }
+
+    return ApiResult.success(<String, dynamic>{
+      'role': AuthStore.role,
+      'user_id': AuthStore.userId,
+      'full_name': AuthStore.fullName,
+    });
   }
 }
 
-// ── OD REQUESTS ───────────────────────────────────────────────────────────────
 class OdApi {
   static Future<List<dynamic>> fetchRequests() async {
-    if (kUseMockApi) {
-      return List<Map<String, dynamic>>.from(MockOdStore.items);
-    }
-
-    final uri = Uri.parse(
-      '$kBaseUrl/od-requests?ts=${DateTime.now().millisecondsSinceEpoch}',
-    );
-    final res = await http
-        .get(uri, headers: AuthStore.headers)
-        .timeout(const Duration(seconds: 5));
-    final dynamic body = jsonDecode(res.body);
-    if (res.statusCode != 200) {
-      throw Exception(_errorFromBody(body, 'Failed to load requests'));
-    }
-    if (body is List) return body;
-    if (body is Map && body['requests'] is List) return body['requests'] as List;
-    return const [];
+    final rows = await _FirestoreApi.allRequests();
+    return rows;
   }
 
-  // Submit new OD request
   static Future<ApiResult<Map>> submit({
     required String eventName,
     required String datetime,
@@ -311,99 +235,55 @@ class OdApi {
     required String organizer,
     required String reason,
     String? fileUrl,
-    String? attachmentBase64, // base64 encoded file
-    String? attachmentMime, // e.g. application/pdf
-    String? attachmentName, // original filename
+    String? attachmentBase64,
+    String? attachmentMime,
+    String? attachmentName,
   }) async {
-    if (kUseMockApi) {
-      final request = MockOdStore.addRequest(
-        eventName: eventName,
-        organiser: organizer,
-        venue: venue,
-        datetime: datetime,
-        reason: reason,
-        attachmentName: attachmentName,
-        attachmentMime: attachmentMime,
-        attachmentBase64: attachmentBase64,
-      );
-      return ApiResult.success(request);
-    }
-
-    final hasAttachment =
-      attachmentBase64 != null && attachmentBase64.trim().isNotEmpty;
-
     try {
-      _logApiCall('POST /od-request event="$eventName" venue="$venue" hasFile=$hasAttachment');
-      final res = await http
-          .post(
-            Uri.parse('$kBaseUrl/od-request'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'event_name': eventName,
-              'organizer': organizer,
-              'venue': venue,
-              'datetime': datetime,
-              'reason': reason,
-              if (fileUrl != null && fileUrl.trim().isNotEmpty) 'file_url': fileUrl,
-              'attachment_base64': ?attachmentBase64,
-              'attachment_mime': ?attachmentMime,
-              'attachment_name': ?attachmentName,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
+      final docRef = await _FirestoreApi.odRequests.add({
+        'event_name': eventName,
+        'organizer': organizer,
+        'organiser': organizer,
+        'venue': venue,
+        'datetime': datetime,
+        'start_datetime': datetime,
+        'reason': reason,
+        'file_url': fileUrl,
+        'attachment_base64': attachmentBase64,
+        'attachment_mime': attachmentMime,
+        'attachment_name': attachmentName,
+        'status': 'Pending',
+        'mentor_approved': false,
+        'hod_approved': false,
+        'principal_approved': false,
+        'expired': false,
+        'is_pinned': false,
+        'created_at': FieldValue.serverTimestamp(),
+        'student_name': AuthStore.fullName ?? 'Student',
+        'student_id': AuthStore.userId ?? '',
+      });
 
-      final dynamic decoded = jsonDecode(res.body);
-      final body = decoded is Map<String, dynamic>
-          ? decoded
-          : <String, dynamic>{'data': decoded};
-      _logApiCall('POST /od-request -> ${res.statusCode}');
-      if (res.statusCode == 200 || res.statusCode == 201) return ApiResult.success(body);
-      return ApiResult.fail(_errorFromBody(body, 'Submission failed'));
+      final row = await _FirestoreApi.requestById(docRef.id);
+      return ApiResult.success(row ?? <String, dynamic>{'id': docRef.id});
     } catch (e) {
-      _logApiError('POST /od-request', e);
-      if (kAllowOfflineFallback) {
-        final request = MockOdStore.addRequest(
-          eventName: eventName,
-          organiser: organizer,
-          venue: venue,
-          datetime: datetime,
-          reason: reason,
-          attachmentName: attachmentName,
-          attachmentMime: attachmentMime,
-          attachmentBase64: attachmentBase64,
-        );
-        return ApiResult.success(request);
-      }
-      return ApiResult.fail('Backend unavailable. Request was not saved. Check http://127.0.0.1:5000 and server logs.');
+      return ApiResult.fail('Failed to submit request: $e');
     }
   }
 
   static Future<ApiResult<List>> events() async {
     try {
-      final items = await fetchRequests();
-      return ApiResult.success(items);
+      return ApiResult.success(await fetchRequests());
     } catch (e) {
-      _logApiError('GET /od-requests', e);
-      if (kAllowOfflineFallback) {
-        return ApiResult.success(List<Map<String, dynamic>>.from(MockOdStore.items));
-      }
-      return ApiResult.fail('Backend unavailable. Unable to load requests.');
+      return ApiResult.fail('Failed to load requests: $e');
     }
   }
 
-  // Get my OD history
   static Future<ApiResult<List>> myRequests() async {
     try {
-      final items = await fetchRequests();
-      return ApiResult.success(items);
+      final rows = await fetchRequests();
+      return ApiResult.success(rows);
     } catch (e) {
-      _logApiError('GET /od-requests', e);
-      if (kAllowOfflineFallback) {
-        return ApiResult.success(
-          List<Map<String, dynamic>>.from(MockOdStore.items),
-        );
-      }
-      return ApiResult.fail('Backend unavailable. Unable to fetch requests.');
+      return ApiResult.fail('Failed to fetch requests: $e');
     }
   }
 
@@ -413,42 +293,23 @@ class OdApi {
       return ApiResult.fail('Invalid request id for resubmission.');
     }
 
-    if (kUseMockApi) {
-      final row = MockOdStore.byId(id);
-      if (row == null) return ApiResult.fail('Request not found');
-      row['status'] = 'Pending';
-      return ApiResult.success(row);
-    }
-
     try {
-      final res = await http
-          .put(
-            Uri.parse('$kBaseUrl/od-request/$id/resubmit'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(item),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      final dynamic decoded = jsonDecode(res.body);
-      final body = decoded is Map<String, dynamic>
-          ? decoded
-          : <String, dynamic>{'data': decoded};
-
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(_errorFromBody(body, 'Resubmit failed'));
+      await _FirestoreApi.odRequests.doc(id).update({
+        'status': 'Pending',
+        'mentor_approved': false,
+        'hod_approved': false,
+        'principal_approved': false,
+        'expired': false,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+      final row = await _FirestoreApi.requestById(id);
+      if (row == null) return ApiResult.fail('Request not found');
+      return ApiResult.success(row);
     } catch (e) {
-      _logApiError('PUT /od-request/{id}/resubmit', e);
-      if (kAllowOfflineFallback) {
-        final row = MockOdStore.byId(id);
-        if (row == null) return ApiResult.fail('Request not found');
-        row['status'] = 'Pending';
-        return ApiResult.success(row);
-      }
-      return ApiResult.fail('Backend unavailable. Unable to resubmit request.');
+      return ApiResult.fail('Failed to resubmit request: $e');
     }
   }
 
-  // Check date overlap before submitting
   static Future<ApiResult<Map>> checkOverlap({
     required String startDate,
     required String endDate,
@@ -456,116 +317,95 @@ class OdApi {
     return ApiResult.success(<String, dynamic>{'has_overlap': false});
   }
 
-  // Active OD session
   static Future<ApiResult<Map>> activeSession() async {
     return ApiResult.success(<String, dynamic>{'has_active_session': false});
   }
+
+  static Stream<List<Map<String, dynamic>>> getODRequests() {
+    return _FirestoreApi.odRequests
+        .orderBy('created_at', descending: true)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => _FirestoreApi.normalizeDoc(doc.id, doc.data()))
+              .toList(),
+        );
+  }
 }
 
-// ── MENTOR ────────────────────────────────────────────────────────────────────
 class MentorApi {
   static Future<ApiResult<List>> queue() async {
-    if (kUseMockApi) {
-      final items = MockOdStore.items
-          .where((r) => !(r['mentor_approved'] == true) && r['status'] != 'Rejected')
-          .toList();
-      return ApiResult.success(items);
-    }
     try {
-      final res = await http
-          .get(Uri.parse('$kBaseUrl/od-requests/mentor'), headers: AuthStore.headers)
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body as List);
-      return ApiResult.fail(_errorFromBody(body, 'Failed to load mentor queue'));
+      final all = await _FirestoreApi.allRequests();
+      final rows = all
+          .where(
+            (r) =>
+                r['mentor_approved'] != true &&
+                r['status'] != 'Rejected' &&
+                r['status'] != 'Approved',
+          )
+          .toList();
+      return ApiResult.success(rows);
     } catch (e) {
-      _logApiError('GET /od-requests/mentor', e);
-      return ApiResult.success(MockOdStore.items);
+      return ApiResult.fail('Failed to load mentor queue: $e');
     }
   }
 
   static Future<ApiResult<Map>> action({
     required String requestId,
-    required String action, // APPROVED | REJECTED
+    required String action,
     String? reason,
     String? comment,
   }) async {
-    if (kUseMockApi) {
-      final r = MockOdStore.byId(requestId);
-      if (r == null) {
-        return ApiResult.fail('Request not found');
-      }
-      r['mentor_comment'] = comment ?? reason;
-      if (action == 'APPROVED') {
-        r['mentor_approved'] = true;
-      } else {
-        r['status'] = 'Rejected';
-      }
-      return ApiResult.success(r);
-    }
-
     try {
-      final endpoint = action == 'APPROVED'
-          ? '$kBaseUrl/od-request/$requestId/approve/mentor'
-          : '$kBaseUrl/od-request/$requestId/reject';
-      final res = await http
-          .put(
-            Uri.parse(endpoint),
-            headers: AuthStore.headers,
-            body: action == 'APPROVED' ? null : jsonEncode({'reason': reason ?? ''}),
-          )
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(_errorFromBody(body, 'Action failed'));
-    } catch (e) {
-      _logApiError('PUT /od-request/{id}/approve|reject', e);
-      if (kAllowOfflineFallback) {
-        final r = MockOdStore.byId(requestId);
-        if (r == null) {
-          return ApiResult.fail('Request not found');
-        }
-        r['mentor_comment'] = comment ?? reason;
-        if (action == 'APPROVED') {
-          r['mentor_approved'] = true;
-        } else {
-          r['status'] = 'Rejected';
-        }
-        return ApiResult.success(r);
+      if (action == 'APPROVED') {
+        await _FirestoreApi.odRequests.doc(requestId).update({
+          'mentor_approved': true,
+          'mentor_comment': comment ?? reason,
+          'status': 'Pending',
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await _FirestoreApi.odRequests.doc(requestId).update({
+          'mentor_comment': comment ?? reason,
+          'status': 'Rejected',
+          'updated_at': FieldValue.serverTimestamp(),
+        });
       }
-      return ApiResult.fail('Backend unavailable. Mentor action not saved.');
+
+      final row = await _FirestoreApi.requestById(requestId);
+      if (row == null) return ApiResult.fail('Request not found');
+      return ApiResult.success(row);
+    } catch (e) {
+      return ApiResult.fail('Mentor action failed: $e');
     }
   }
 
   static Future<ApiResult<List>> history() async {
     try {
-      return ApiResult.success(await OdApi.fetchRequests());
+      return ApiResult.success(await _FirestoreApi.allRequests());
     } catch (e) {
-      _logApiError('GET /od-requests', e);
-      return ApiResult.success(MockOdStore.items);
+      return ApiResult.fail('Failed to load history: $e');
     }
   }
 }
 
-// ── HOD ───────────────────────────────────────────────────────────────────────
 class HoDApi {
   static Future<ApiResult<List>> queue() async {
-    if (kUseMockApi) {
-      final items = MockOdStore.items
-          .where((r) => r['mentor_approved'] == true && r['hod_approved'] != true && r['status'] != 'Rejected')
-          .toList();
-      return ApiResult.success(items);
-    }
     try {
-      final res = await http
-          .get(Uri.parse('$kBaseUrl/od-requests/hod'), headers: AuthStore.headers)
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body as List);
-      return ApiResult.fail(_errorFromBody(body, 'Failed to load HoD queue'));
+      final all = await _FirestoreApi.allRequests();
+      final rows = all
+          .where(
+            (r) =>
+                r['mentor_approved'] == true &&
+                r['hod_approved'] != true &&
+                r['status'] != 'Rejected' &&
+                r['status'] != 'Approved',
+          )
+          .toList();
+      return ApiResult.success(rows);
     } catch (e) {
-      _logApiError('GET /od-requests/hod', e);
-      return ApiResult.success(MockOdStore.items);
+      return ApiResult.fail('Failed to load HoD queue: $e');
     }
   }
 
@@ -574,49 +414,27 @@ class HoDApi {
     required String action,
     String? reason,
   }) async {
-    if (kUseMockApi) {
-      final r = MockOdStore.byId(requestId);
-      if (r == null) {
-        return ApiResult.fail('Request not found');
-      }
-      r['hod_comment'] = reason;
-      if (action == 'APPROVED') {
-        r['hod_approved'] = true;
-      } else {
-        r['status'] = 'Rejected';
-      }
-      return ApiResult.success(r);
-    }
     try {
-      final endpoint = action == 'APPROVED'
-          ? '$kBaseUrl/od-request/$requestId/approve/hod'
-          : '$kBaseUrl/od-request/$requestId/reject';
-      final res = await http
-          .put(
-            Uri.parse(endpoint),
-            headers: AuthStore.headers,
-            body: action == 'APPROVED' ? null : jsonEncode({'reason': reason ?? ''}),
-          )
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(_errorFromBody(body, 'Action failed'));
-    } catch (e) {
-      _logApiError('PUT /od-request/{id}/approve|reject', e);
-      if (kAllowOfflineFallback) {
-        final r = MockOdStore.byId(requestId);
-        if (r == null) {
-          return ApiResult.fail('Request not found');
-        }
-        r['hod_comment'] = reason;
-        if (action == 'APPROVED') {
-          r['hod_approved'] = true;
-        } else {
-          r['status'] = 'Rejected';
-        }
-        return ApiResult.success(r);
+      if (action == 'APPROVED') {
+        await _FirestoreApi.odRequests.doc(requestId).update({
+          'hod_approved': true,
+          'hod_comment': reason,
+          'status': 'Pending',
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await _FirestoreApi.odRequests.doc(requestId).update({
+          'hod_comment': reason,
+          'status': 'Rejected',
+          'updated_at': FieldValue.serverTimestamp(),
+        });
       }
-      return ApiResult.fail('Backend unavailable. HoD action not saved.');
+
+      final row = await _FirestoreApi.requestById(requestId);
+      if (row == null) return ApiResult.fail('Request not found');
+      return ApiResult.success(row);
+    } catch (e) {
+      return ApiResult.fail('HoD action failed: $e');
     }
   }
 
@@ -625,16 +443,13 @@ class HoDApi {
   }
 
   static Future<ApiResult<Map>> analytics() async {
-    final itemsRes = await OdApi.fetchRequests();
-    final total = itemsRes.length;
-    var approved = 0;
-    var rejected = 0;
-    for (final item in itemsRes) {
-      final row = item as Map;
-      final status = row['status']?.toString() ?? '';
-      if (status == 'Approved') approved++;
-      if (status == 'Rejected') rejected++;
-    }
+    final items = await _FirestoreApi.allRequests();
+    final total = items.length;
+    final approved =
+        items.where((e) => (e['status']?.toString() ?? '') == 'Approved').length;
+    final rejected =
+        items.where((e) => (e['status']?.toString() ?? '') == 'Rejected').length;
+
     return ApiResult.success({
       'total': total,
       'approved': approved,
@@ -646,9 +461,9 @@ class HoDApi {
 
   static Future<ApiResult<List>> history() async {
     try {
-      return ApiResult.success(await OdApi.fetchRequests());
+      return ApiResult.success(await _FirestoreApi.allRequests());
     } catch (e) {
-      return ApiResult.success(MockOdStore.items);
+      return ApiResult.fail('Failed to load history: $e');
     }
   }
 
@@ -657,26 +472,22 @@ class HoDApi {
   }
 }
 
-// ── PRINCIPAL ────────────────────────────────────────────────────────────────
 class PrincipalApi {
   static Future<ApiResult<List>> queue() async {
-    if (kUseMockApi) {
-      final items = MockOdStore.items
-          .where((r) => r['hod_approved'] == true && r['principal_approved'] != true && r['status'] != 'Rejected')
-          .toList();
-      return ApiResult.success(items);
-    }
-
     try {
-      final res = await http
-          .get(Uri.parse('$kBaseUrl/od-requests/principal'), headers: AuthStore.headers)
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body as List);
-      return ApiResult.fail(_errorFromBody(body, 'Failed to load principal queue'));
+      final all = await _FirestoreApi.allRequests();
+      final rows = all
+          .where(
+            (r) =>
+                r['hod_approved'] == true &&
+                r['principal_approved'] != true &&
+                r['status'] != 'Rejected' &&
+                r['status'] != 'Approved',
+          )
+          .toList();
+      return ApiResult.success(rows);
     } catch (e) {
-      _logApiError('GET /od-requests/principal', e);
-      return ApiResult.success(MockOdStore.items);
+      return ApiResult.fail('Failed to load principal queue: $e');
     }
   }
 
@@ -685,36 +496,27 @@ class PrincipalApi {
     required String action,
     String? reason,
   }) async {
-    if (kUseMockApi) {
-      final r = MockOdStore.byId(requestId);
-      if (r == null) return ApiResult.fail('Request not found');
-      r['principal_comment'] = reason;
-      if (action == 'APPROVED') {
-        r['principal_approved'] = true;
-        r['status'] = 'Approved';
-      } else {
-        r['status'] = 'Rejected';
-      }
-      return ApiResult.success(r);
-    }
-
     try {
-      final endpoint = action == 'APPROVED'
-          ? '$kBaseUrl/od-request/$requestId/approve/principal'
-          : '$kBaseUrl/od-request/$requestId/reject';
-      final res = await http
-          .put(
-            Uri.parse(endpoint),
-            headers: AuthStore.headers,
-            body: action == 'APPROVED' ? null : jsonEncode({'reason': reason ?? ''}),
-          )
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(_errorFromBody(body, 'Action failed'));
+      if (action == 'APPROVED') {
+        await _FirestoreApi.odRequests.doc(requestId).update({
+          'principal_approved': true,
+          'principal_comment': reason,
+          'status': 'Approved',
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await _FirestoreApi.odRequests.doc(requestId).update({
+          'principal_comment': reason,
+          'status': 'Rejected',
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+      }
+
+      final row = await _FirestoreApi.requestById(requestId);
+      if (row == null) return ApiResult.fail('Request not found');
+      return ApiResult.success(row);
     } catch (e) {
-      _logApiError('PUT /od-request/{id}/approve/principal|reject', e);
-      return ApiResult.fail('Backend unavailable. Principal action not saved.');
+      return ApiResult.fail('Principal action failed: $e');
     }
   }
 
@@ -723,59 +525,33 @@ class PrincipalApi {
       return ApiResult.success({'message': 'Bulk approved', 'count': 0});
     }
 
-    if (kUseMockApi) {
-      var count = 0;
-      final selected = ids.toSet();
-      for (final r in MockOdStore.items) {
-        final requestId = r['id']?.toString() ?? '';
-        if (selected.contains(requestId) &&
-            r['hod_approved'] == true &&
-            r['principal_approved'] != true &&
-            r['status'] != 'Rejected') {
-          r['principal_approved'] = true;
-          r['status'] = 'Approved';
-          count++;
-        }
+    var count = 0;
+    for (final id in ids) {
+      try {
+        final row = await _FirestoreApi.requestById(id);
+        if (row == null) continue;
+        final eligible = row['hod_approved'] == true &&
+            row['principal_approved'] != true &&
+            row['status'] != 'Rejected';
+        if (!eligible) continue;
+
+        await _FirestoreApi.odRequests.doc(id).update({
+          'principal_approved': true,
+          'status': 'Approved',
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+        count++;
+      } catch (_) {
+        // Continue bulk processing even if one document update fails.
       }
-      return ApiResult.success({'message': '$count requests approved', 'count': count});
     }
 
-    try {
-      final res = await http
-          .put(
-            Uri.parse('$kBaseUrl/bulk-approve'),
-            headers: AuthStore.headers,
-            body: jsonEncode({'ids': ids}),
-          )
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(_errorFromBody(body, 'Bulk approve failed'));
-    } catch (e) {
-      _logApiError('PUT /bulk-approve', e);
-      return ApiResult.fail('Backend unavailable. Principal bulk approve failed.');
-    }
+    return ApiResult.success({'message': '$count requests approved', 'count': count});
   }
 }
 
-// ── VERIFY ────────────────────────────────────────────────────────────────────
 class VerifyApi {
   static Future<ApiResult<Map>> scan(String uniqueId) async {
-    try {
-      final res = await http
-          .get(
-            Uri.parse('$kBaseUrl/api/verify/$uniqueId'),
-            headers: AuthStore.headers,
-          )
-          .timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body);
-      if (res.statusCode == 200) return ApiResult.success(body);
-      return ApiResult.fail(_errorFromBody(body, 'Scan failed'));
-    } catch (e) {
-      if (kUseMockApi) {
-        return ApiResult.fail('Invalid QR (mock mode) or offline');
-      }
-      return ApiResult.fail('Network error: $e');
-    }
+    return ApiResult.fail('QR verification backend removed; use Firebase flow.');
   }
 }
