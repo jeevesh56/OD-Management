@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../api_service.dart';
 import '../student_home_screen.dart';
@@ -210,6 +212,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         return;
       }
       AuthStore.applyMentorLogin(_emailController.text);
+      _registerFcmForCurrentUser('mentor');
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const MentorHomeScreen()),
@@ -228,6 +231,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         return;
       }
       AuthStore.applyPrincipalLogin(_emailController.text);
+      _registerFcmForCurrentUser('principal');
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const PrincipalHomeScreen()),
@@ -246,6 +250,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         return;
       }
       AuthStore.applyHodLogin(_emailController.text);
+      _registerFcmForCurrentUser('hod');
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const HoDHomeScreen()),
@@ -264,10 +269,24 @@ class _ODLoginUIState extends State<ODLoginUI> {
       return;
     }
     AuthStore.applyStudentLogin(_emailController.text.trim());
+    _registerFcmForCurrentUser('student');
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => const StudentHomeScreen()),
     );
+  }
+
+  Future<void> _registerFcmForCurrentUser(String role) async {
+    final userId = AuthStore.userId ?? _emailController.text.trim();
+    if (userId.isEmpty) return;
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token == null || token.isEmpty) return;
+    await FirebaseFirestore.instance.collection('users').doc(userId).set({
+      'fcm_token': token,
+      'role': role,
+      'user_id': userId,
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Widget _loginTypeToggle() {
@@ -349,7 +368,11 @@ class _ODLoginUIState extends State<ODLoginUI> {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Color(0xFF0F3D91), width: 1.2),
         ),
-        prefixIcon: const Icon(Icons.lock_outline, color: Colors.black54, size: 20),
+        prefixIcon: const Icon(
+          Icons.lock_outline,
+          color: Colors.black54,
+          size: 20,
+        ),
         suffixIcon: IconButton(
           icon: Icon(
             _obscurePassword ? Icons.visibility_off : Icons.visibility,

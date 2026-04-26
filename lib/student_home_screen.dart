@@ -12,8 +12,10 @@ import 'api_service.dart';
 import 'domain/rules/od_rule_engine.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
+import 'widgets/portal_od_helpers.dart';
 import 'widgets/portal_page_layout.dart';
 import 'widgets/portal_request_card.dart';
+import 'widgets/proof_action_buttons.dart';
 
 const Color kStudentPrimary = Color(0xFF1257B0);
 const Color kStudentSidebar = Color(0xFF102A5C);
@@ -860,6 +862,7 @@ class _NewODPageState extends State<_NewODPage> {
 
   // File attachment
   String? _fileName;
+  String? _fileUrl;
   String? _fileBase64;
   String? _fileMime;
   bool _fileLoading = false;
@@ -939,7 +942,7 @@ class _NewODPageState extends State<_NewODPage> {
         'organizer': organizerController.text.trim(),
         'organiser': organizerController.text.trim(),
         'reason': reason,
-        'file_url': '',
+        'file_url': _fileUrl ?? '',
         'attachment_base64': _fileBase64,
         'attachment_mime': _fileMime,
         'attachment_name': _fileName,
@@ -947,11 +950,19 @@ class _NewODPageState extends State<_NewODPage> {
         'mentor_approved': false,
         'hod_approved': false,
         'principal_approved': false,
+        'rejected': false,
         'is_pinned': false,
         'expired': false,
         'created_at': FieldValue.serverTimestamp(),
         'student_name': AuthStore.fullName ?? 'Student',
         'student_id': AuthStore.userId ?? '',
+      });
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'user_role': 'mentor',
+        'title': 'New OD Request',
+        'message': 'A student submitted OD request',
+        'seen': false,
+        'timestamp': FieldValue.serverTimestamp(),
       });
       debugPrint('OD stored successfully');
 
@@ -965,6 +976,7 @@ class _NewODPageState extends State<_NewODPage> {
         reasonController.clear();
         dateTimeController.clear();
         _fileName = null;
+        _fileUrl = null;
         _fileBase64 = null;
         selectedDateTime = null;
       });
@@ -1219,6 +1231,7 @@ class _NewODPageState extends State<_NewODPage> {
                                       ),
                                       onPressed: () => setState(() {
                                         _fileName = null;
+                                        _fileUrl = null;
                                         _fileBase64 = null;
                                         _fileMime = null;
                                       }),
@@ -1346,6 +1359,7 @@ class _NewODPageState extends State<_NewODPage> {
 
     setState(() {
       _fileName = file.name;
+      _fileUrl = result;
       _fileBase64 = base64;
       _fileMime = mime;
       _fileLoading = false;
@@ -1470,14 +1484,20 @@ class _HistoryPageState extends State<_HistoryPage> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '${_items.length} request${_items.length == 1 ? '' : 's'} — tap for details',
+                      '${_items.length} request${_items.length == 1 ? '' : 's'}',
                       style: TextStyle(
                         color: Colors.grey.shade700,
                         fontSize: 15,
                       ),
                     ),
                     const SizedBox(height: 20),
-                    ..._items.map((r) => PortalRequestCard(r: r as Map)),
+                    ..._items
+                        .where((r) {
+                          final status = (r['status']?.toString() ?? '')
+                              .toLowerCase();
+                          return status == 'approved' || status == 'rejected';
+                        })
+                        .map((r) => _historyListItem(r as Map)),
                   ],
                 ),
               ),
@@ -1485,6 +1505,58 @@ class _HistoryPageState extends State<_HistoryPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _historyListItem(Map r) {
+    final status = r['status']?.toString() ?? 'Pending';
+    final isApproved = status.toLowerCase() == 'approved';
+    final color = isApproved ? Colors.green : Colors.red;
+    final dateText = portalOdDateTime(r['datetime']);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE6ECF5)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  r['event_name']?.toString() ?? 'Untitled event',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(dateText, style: const TextStyle(color: Colors.grey)),
+                const SizedBox(height: 10),
+                ProofActionButtons(
+                  fileUrl: r['file_url']?.toString() ?? '',
+                  showDownload: true,
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              status,
+              style: TextStyle(color: color, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

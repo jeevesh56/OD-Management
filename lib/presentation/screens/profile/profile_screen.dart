@@ -2,131 +2,114 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../domain/entities/app_user.dart';
+import '../../../domain/enums/user_role.dart';
 import '../../app/app_providers.dart';
 
-class ProfileScreen extends ConsumerStatefulWidget {
+class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
-  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
-}
-
-class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  final _nameCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
-  final _deptCtrl = TextEditingController();
-  final _classNameCtrl = TextEditingController();
-  bool _saving = false;
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _phoneCtrl.dispose();
-    _deptCtrl.dispose();
-    _classNameCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save(AppUser user) async {
-    setState(() => _saving = true);
-    final updated = AppUser(
-      id: user.id,
-      email: user.email,
-      fullName: _nameCtrl.text.trim(),
-      role: user.role,
-      regNo: user.regNo,
-      staffId: user.staffId,
-      phone: _phoneCtrl.text.trim(),
-      department: _deptCtrl.text.trim(),
-      className: _classNameCtrl.text.trim(),
-      section: user.section,
-      classAdvisorId: user.classAdvisorId,
-      photoUrl: user.photoUrl,
-      createdAt: user.createdAt,
-      updatedAt: DateTime.now(),
-      isActive: user.isActive,
-      requiresPasswordChange: user.requiresPasswordChange,
-    );
-    await ref.read(userRepositoryProvider).updateProfile(updated);
-    if (mounted) {
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Profile updated')));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authStateProvider);
     final user = auth.asData?.value;
     if (user == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    _nameCtrl.text = _nameCtrl.text.isEmpty ? user.fullName : _nameCtrl.text;
-    _phoneCtrl.text = _phoneCtrl.text.isEmpty ? (user.phone ?? '') : _phoneCtrl.text;
-    _deptCtrl.text =
-        _deptCtrl.text.isEmpty ? user.department : _deptCtrl.text;
-    _classNameCtrl.text =
-        _classNameCtrl.text.isEmpty ? (user.className ?? '') : _classNameCtrl.text;
+    final idNumber = (user.regNo ?? '').isNotEmpty
+        ? user.regNo!
+        : (user.staffId ?? '—');
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        actions: [
-          IconButton(
-            tooltip: 'Logout',
-            onPressed: () => ref.read(authServiceProvider).signOut(),
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Profile')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              TextField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: 'Name'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                enabled: false,
-                decoration: InputDecoration(
-                  labelText: 'Email',
-                  hintText: user.email,
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      CircleAvatar(
+                        radius: 38,
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.primaryContainer,
+                        backgroundImage:
+                            (user.photoUrl != null && user.photoUrl!.isNotEmpty)
+                            ? NetworkImage(user.photoUrl!)
+                            : null,
+                        child: (user.photoUrl == null || user.photoUrl!.isEmpty)
+                            ? Text(
+                                user.fullName.isNotEmpty
+                                    ? user.fullName[0].toUpperCase()
+                                    : 'U',
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+                      _profileRow('Name', user.fullName),
+                      _profileRow('Reg No / Staff ID', idNumber),
+                      _profileRow('Department', user.department),
+                      _profileRow('Class', user.className ?? '—'),
+                      _profileRow('Phone', user.phone ?? '—'),
+                      _profileRow('Role', user.role.value.toUpperCase()),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _phoneCtrl,
-                decoration: const InputDecoration(labelText: 'Phone'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _deptCtrl,
-                decoration: const InputDecoration(labelText: 'Department'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _classNameCtrl,
-                decoration: const InputDecoration(labelText: 'Class'),
               ),
               const SizedBox(height: 16),
               FilledButton(
-                onPressed: _saving ? null : () => _save(user),
-                child: Text(_saving ? 'Saving...' : 'Save profile'),
+                onPressed: () => context.push('/profile/edit'),
+                child: const Text('Edit Profile'),
               ),
               const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: () => context.go('/change-password'),
                 child: const Text('Change Password'),
               ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => ref.read(authServiceProvider).signOut(),
+                icon: const Icon(Icons.logout),
+                label: const Text('Logout'),
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _profileRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.grey,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
       ),
     );
   }

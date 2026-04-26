@@ -21,6 +21,7 @@ import '../../data/services/qr_verification_service.dart';
 import '../../data/services/request_lifecycle_service.dart';
 import '../../data/services/role_access_service.dart';
 import '../../data/services/timetable_engine_service.dart';
+import '../../data/services/user_profile_service.dart';
 import '../../domain/entities/app_user.dart';
 import '../../domain/enums/user_role.dart';
 import '../../domain/repositories/approval_repository.dart';
@@ -28,8 +29,8 @@ import '../../domain/repositories/od_request_repository.dart';
 import '../../domain/repositories/user_repository.dart';
 import '../../screens/login_screen.dart';
 import '../screens/auth/change_password_screen.dart';
-import '../screens/auth/firebase_login_screen.dart';
 import '../screens/profile/profile_screen.dart';
+import '../screens/profile/edit_profile_screen.dart';
 import '../screens/qr/qr_scan_screen.dart';
 import '../screens/workflow/reviewer_queue_screen.dart';
 import '../screens/workflow/student_od_submit_screen.dart';
@@ -92,8 +93,17 @@ final notificationServiceProvider = Provider<NotificationService>((ref) {
   return NotificationService(ref.watch(firestoreProvider));
 });
 
-final requestLifecycleServiceProvider = Provider<RequestLifecycleService>((ref) {
+final requestLifecycleServiceProvider = Provider<RequestLifecycleService>((
+  ref,
+) {
   return RequestLifecycleService(ref.watch(firestoreProvider));
+});
+
+final userProfileServiceProvider = Provider<UserProfileService>((ref) {
+  return UserProfileService(
+    ref.watch(firestoreProvider),
+    ref.watch(firebaseAuthProvider),
+  );
 });
 
 final auditLogServiceProvider = Provider<AuditLogService>((ref) {
@@ -126,15 +136,10 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/login',
     routes: [
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const ODLoginUI(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const ODLoginUI()),
       GoRoute(
         path: '/change-password',
-        builder: (context, state) => ChangePasswordScreen(
-          authRepository: ref.read(firebaseAuthRepositoryProvider),
-        ),
+        builder: (context, state) => const ChangePasswordScreen(),
       ),
       GoRoute(
         path: '/home/student',
@@ -142,11 +147,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/home/mentor',
-        builder: (context, state) => const ReviewerQueueScreen(roleScope: 'mentor'),
+        builder: (context, state) =>
+            const ReviewerQueueScreen(roleScope: 'mentor'),
       ),
       GoRoute(
         path: '/home/hod',
-        builder: (context, state) => const ReviewerQueueScreen(roleScope: 'hod'),
+        builder: (context, state) =>
+            const ReviewerQueueScreen(roleScope: 'hod'),
       ),
       GoRoute(
         path: '/home/principal',
@@ -165,6 +172,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/profile/edit',
+        builder: (context, state) => const EditProfileScreen(),
       ),
       GoRoute(
         path: '/qr-scan',

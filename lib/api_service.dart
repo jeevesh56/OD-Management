@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'data/services/firestore_paths.dart';
 
 // Shared role colors used across OD Manager screens.
 const Color kBlue = Color(0xFF1565C0);
@@ -89,6 +90,7 @@ class AuthStore {
     userDepartment = email.contains('@')
         ? roleDepartmentFromEmail(email)
         : 'Department';
+    userId = email.isNotEmpty ? email : 'mentor_user';
     role = 'mentor';
   }
 
@@ -98,6 +100,7 @@ class AuthStore {
     userDepartment = email.contains('@')
         ? roleDepartmentFromEmail(email)
         : 'Department';
+    userId = email.isNotEmpty ? email : 'hod_user';
     role = 'hod';
   }
 
@@ -107,6 +110,7 @@ class AuthStore {
     userDepartment = email.contains('@')
         ? roleDepartmentFromEmail(email)
         : 'Department';
+    userId = email.isNotEmpty ? email : 'principal_user';
     role = 'principal';
   }
 
@@ -154,7 +158,9 @@ class _FirestoreApi {
         fullyApproved) {
       return 'Approved';
     }
-    if (upper == 'REJECTED' || upper.contains('REJECTED')) {
+    if (row['rejected'] == true ||
+        upper == 'REJECTED' ||
+        upper.contains('REJECTED')) {
       return 'Rejected';
     }
     if (upper == 'EXPIRED' || row['expired'] == true) {
@@ -182,6 +188,7 @@ class _FirestoreApi {
     out['mentor_approved'] = out['mentor_approved'] == true;
     out['hod_approved'] = out['hod_approved'] == true;
     out['principal_approved'] = out['principal_approved'] == true;
+    out['rejected'] = out['rejected'] == true;
     out['status'] = normalizeStatus(out);
     out['expired'] = out['status'] == 'Expired';
     out['is_pinned'] = out['is_pinned'] == true;
@@ -198,6 +205,31 @@ class _FirestoreApi {
     final doc = await odRequests.doc(id).get();
     if (!doc.exists) return null;
     return normalizeDoc(doc.id, doc.data() ?? <String, dynamic>{});
+  }
+
+  static Future<void> sendRoleNotification({
+    required String role,
+    required String title,
+    required String body,
+    String? requestId,
+  }) async {
+    final users = await db
+        .collection('users')
+        .where('role', isEqualTo: role)
+        .get();
+    for (final user in users.docs) {
+      final token = user.data()['fcm_token']?.toString() ?? '';
+      await db.collection(FirestorePaths.notifications).add({
+        'user_role': role,
+        'to_user_id': user.id,
+        'token': token,
+        'title': title,
+        'message': body,
+        'request_id': requestId,
+        'seen': false,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    }
   }
 }
 
@@ -263,6 +295,7 @@ class OdApi {
         'mentor_approved': false,
         'hod_approved': false,
         'principal_approved': false,
+        'rejected': false,
         'expired': false,
         'is_pinned': false,
         'created_at': FieldValue.serverTimestamp(),
@@ -271,6 +304,12 @@ class OdApi {
       });
 
       final row = await _FirestoreApi.requestById(docRef.id);
+      await _FirestoreApi.sendRoleNotification(
+        role: 'mentor',
+        title: 'New OD Request',
+        body: 'A student submitted OD request',
+        requestId: docRef.id,
+      );
       return ApiResult.success(row ?? <String, dynamic>{'id': docRef.id});
     } catch (e) {
       return ApiResult.fail('Failed to submit request: $e');
@@ -308,6 +347,7 @@ class OdApi {
         'mentor_approved': false,
         'hod_approved': false,
         'principal_approved': false,
+        'rejected': false,
         'expired': false,
         'updated_at': FieldValue.serverTimestamp(),
       });
@@ -350,6 +390,7 @@ class MentorApi {
           .where(
             (r) =>
                 r['mentor_approved'] != true &&
+                r['rejected'] != true &&
                 r['status'] != 'Rejected' &&
                 r['status'] != 'Approved',
           )
@@ -370,16 +411,30 @@ class MentorApi {
       if (action == 'APPROVED') {
         await _FirestoreApi.odRequests.doc(requestId).update({
           'mentor_approved': true,
+          'rejected': false,
           'mentor_comment': comment ?? reason,
           'status': 'Pending',
           'updated_at': FieldValue.serverTimestamp(),
         });
+        await _FirestoreApi.sendRoleNotification(
+          role: 'hod',
+          title: 'OD Approved by Mentor',
+          body: 'Request moved to HOD',
+          requestId: requestId,
+        );
       } else {
         await _FirestoreApi.odRequests.doc(requestId).update({
           'mentor_comment': comment ?? reason,
+          'rejected': true,
           'status': 'Rejected',
           'updated_at': FieldValue.serverTimestamp(),
         });
+        await _FirestoreApi.sendRoleNotification(
+          role: 'student',
+          title: 'OD Rejected',
+          body: 'Your OD was rejected',
+          requestId: requestId,
+        );
       }
 
       final row = await _FirestoreApi.requestById(requestId);
@@ -408,6 +463,7 @@ class HoDApi {
             (r) =>
                 r['mentor_approved'] == true &&
                 r['hod_approved'] != true &&
+                r['rejected'] != true &&
                 r['status'] != 'Rejected' &&
                 r['status'] != 'Approved',
           )
@@ -427,16 +483,30 @@ class HoDApi {
       if (action == 'APPROVED') {
         await _FirestoreApi.odRequests.doc(requestId).update({
           'hod_approved': true,
+          'rejected': false,
           'hod_comment': reason,
           'status': 'Pending',
           'updated_at': FieldValue.serverTimestamp(),
         });
+        await _FirestoreApi.sendRoleNotification(
+          role: 'principal',
+          title: 'OD Approved by HOD',
+          body: 'Request moved to Principal',
+          requestId: requestId,
+        );
       } else {
         await _FirestoreApi.odRequests.doc(requestId).update({
           'hod_comment': reason,
+          'rejected': true,
           'status': 'Rejected',
           'updated_at': FieldValue.serverTimestamp(),
         });
+        await _FirestoreApi.sendRoleNotification(
+          role: 'student',
+          title: 'OD Rejected',
+          body: 'Your OD was rejected',
+          requestId: requestId,
+        );
       }
 
       final row = await _FirestoreApi.requestById(requestId);
@@ -492,6 +562,7 @@ class PrincipalApi {
             (r) =>
                 r['hod_approved'] == true &&
                 r['principal_approved'] != true &&
+                r['rejected'] != true &&
                 r['status'] != 'Rejected' &&
                 r['status'] != 'Approved',
           )
@@ -511,16 +582,30 @@ class PrincipalApi {
       if (action == 'APPROVED') {
         await _FirestoreApi.odRequests.doc(requestId).update({
           'principal_approved': true,
+          'rejected': false,
           'principal_comment': reason,
           'status': 'Approved',
           'updated_at': FieldValue.serverTimestamp(),
         });
+        await _FirestoreApi.sendRoleNotification(
+          role: 'student',
+          title: 'OD Approved',
+          body: 'Your OD is approved',
+          requestId: requestId,
+        );
       } else {
         await _FirestoreApi.odRequests.doc(requestId).update({
           'principal_comment': reason,
+          'rejected': true,
           'status': 'Rejected',
           'updated_at': FieldValue.serverTimestamp(),
         });
+        await _FirestoreApi.sendRoleNotification(
+          role: 'student',
+          title: 'OD Rejected',
+          body: 'Your OD was rejected',
+          requestId: requestId,
+        );
       }
 
       final row = await _FirestoreApi.requestById(requestId);
@@ -544,11 +629,13 @@ class PrincipalApi {
         final eligible =
             row['hod_approved'] == true &&
             row['principal_approved'] != true &&
+            row['rejected'] != true &&
             row['status'] != 'Rejected';
         if (!eligible) continue;
 
         await _FirestoreApi.odRequests.doc(id).update({
           'principal_approved': true,
+          'rejected': false,
           'status': 'Approved',
           'updated_at': FieldValue.serverTimestamp(),
         });

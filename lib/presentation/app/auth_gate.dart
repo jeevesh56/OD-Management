@@ -13,11 +13,7 @@ import '../screens/auth/firebase_login_screen.dart';
 import '../screens/ec/ec_home_screen.dart';
 
 class AuthGate extends StatelessWidget {
-  const AuthGate({
-    super.key,
-    this.services,
-    required this.firebaseEnabled,
-  });
+  const AuthGate({super.key, this.services, required this.firebaseEnabled});
 
   final ServiceRegistry? services;
   final bool firebaseEnabled;
@@ -47,7 +43,7 @@ class AuthGate extends StatelessWidget {
         }
 
         if (user.requiresPasswordChange) {
-          return ChangePasswordScreen(authRepository: serviceRegistry.authRepository);
+          return const ChangePasswordScreen();
         }
 
         return switch (user.role) {

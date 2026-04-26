@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../api_service.dart';
 import '../widgets/portal_od_helpers.dart';
 import '../widgets/portal_od_timeline.dart';
 import '../widgets/portal_page_layout.dart';
@@ -139,11 +141,56 @@ class PortalStatusTimelineScreen extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: scheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: scheme.outlineVariant),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Proof',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 8),
+                        _proofLink(request),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _proofLink(Map<dynamic, dynamic> request) {
+    final fileUrl = request['file_url']?.toString().trim() ?? '';
+    if (fileUrl.isEmpty) {
+      return const Text('No proof uploaded');
+    }
+    final fullUrl = getFullUrl(fileUrl);
+    return GestureDetector(
+      onTap: () async {
+        final uri = Uri.tryParse(fullUrl);
+        if (uri != null) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      },
+      child: const Text(
+        'View uploaded proof',
+        style: TextStyle(
+          color: Colors.blue,
+          fontWeight: FontWeight.w600,
+          decoration: TextDecoration.underline,
+        ),
       ),
     );
   }

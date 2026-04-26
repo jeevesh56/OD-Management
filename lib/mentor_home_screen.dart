@@ -1,13 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
 import 'widgets/portal_od_helpers.dart';
+import 'widgets/proof_action_buttons.dart';
 import 'widgets/role_profile_widgets.dart';
 
 const Color kMentorPrimary = Color(0xFF1257B0);
@@ -203,6 +202,8 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
       case 1:
         return 'OD Requests';
       case 2:
+        return 'History';
+      case 3:
         return 'Profile';
       default:
         return 'Dashboard';
@@ -218,6 +219,8 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
           onReject: _reject,
         );
       case 2:
+        return _HistoryPanel(rows: _history);
+      case 3:
         return _ProfilePanel(onLogout: _logout);
       default:
         return _DashboardPanel(queue: _queue, history: _history);
@@ -319,10 +322,16 @@ class _Sidebar extends StatelessWidget {
             onTap: () => onTap(1),
           ),
           _SidebarItem(
-            icon: Icons.person_rounded,
-            label: 'Profile',
+            icon: Icons.history_rounded,
+            label: 'History',
             active: current == 2,
             onTap: () => onTap(2),
+          ),
+          _SidebarItem(
+            icon: Icons.person_rounded,
+            label: 'Profile',
+            active: current == 3,
+            onTap: () => onTap(3),
           ),
           const Spacer(),
           const Padding(
@@ -540,6 +549,72 @@ class _ODRequestsPanel extends StatelessWidget {
   }
 }
 
+class _HistoryPanel extends StatelessWidget {
+  const _HistoryPanel({required this.rows});
+
+  final List<Map<String, dynamic>> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final historyRows = rows.where((r) {
+      return r['mentor_approved'] == true || r['rejected'] == true;
+    }).toList();
+
+    if (historyRows.isEmpty) {
+      return const _EmptyState(
+        icon: Icons.history_rounded,
+        title: 'No history yet',
+        subtitle: 'Processed requests will appear here.',
+      );
+    }
+
+    return Column(
+      children: historyRows.map((row) {
+        final status = row['status']?.toString() ?? 'Pending';
+        final isApproved = status.toLowerCase() == 'approved';
+        final color = isApproved ? Colors.green : Colors.red;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE6ECF5)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isApproved ? Icons.check_circle : Icons.cancel,
+                color: color,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      row['event_name']?.toString() ?? 'Untitled event',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      portalOdDateTime(row['datetime']),
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                status,
+                style: TextStyle(color: color, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
 class _ODRequestCard extends StatelessWidget {
   const _ODRequestCard({
     required this.row,
@@ -550,103 +625,6 @@ class _ODRequestCard extends StatelessWidget {
   final Map<String, dynamic> row;
   final VoidCallback onApprove;
   final VoidCallback onReject;
-
-  static bool _looksLikeImageUrl(String value) {
-    final lower = value.toLowerCase();
-    return lower.endsWith('.png') ||
-        lower.endsWith('.jpg') ||
-        lower.endsWith('.jpeg') ||
-        lower.endsWith('.webp') ||
-        lower.endsWith('.gif');
-  }
-
-  static bool _looksLikePdfUrl(String value) {
-    return value.toLowerCase().endsWith('.pdf');
-  }
-
-  Widget _buildFilePreview(BuildContext context, String fileUrl) {
-    if (fileUrl.isEmpty) {
-      return const Text('No uploaded proof available.');
-    }
-
-    final fullUrl = getFullUrl(fileUrl);
-
-    if (_looksLikeImageUrl(fileUrl)) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Image.network(
-          fullUrl,
-          height: 170,
-          width: double.infinity,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) =>
-              const Text('Unable to load image preview.'),
-        ),
-      );
-    }
-
-    if (_looksLikePdfUrl(fileUrl)) {
-      return InkWell(
-        onTap: () async {
-          final uri = Uri.tryParse(fullUrl);
-          if (uri != null) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-          }
-        },
-        child: const Text(
-          'View PDF Proof',
-          style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w600),
-        ),
-      );
-    }
-
-    return InkWell(
-      onTap: () async {
-        final uri = Uri.tryParse(fullUrl);
-        if (uri != null) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
-      },
-      child: Text(
-        fullUrl,
-        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-
-  Widget _buildLegacyPreview() {
-    final b64 = row['attachment_base64']?.toString() ?? '';
-    final mime = row['attachment_mime']?.toString() ?? '';
-
-    if (b64.isEmpty || mime.isEmpty) {
-      return const Text('No uploaded proof available.');
-    }
-
-    if (mime.startsWith('image/')) {
-      try {
-        final bytes = base64Decode(b64);
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Image.memory(
-            bytes,
-            height: 170,
-            width: double.infinity,
-            fit: BoxFit.cover,
-          ),
-        );
-      } catch (_) {
-        return const Text('Unable to decode image proof.');
-      }
-    }
-
-    if (mime == 'application/pdf') {
-      return const Text(
-        'PDF proof attached (upload URL required for web preview).',
-      );
-    }
-
-    return const Text('Unsupported proof format.');
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -696,9 +674,7 @@ class _ODRequestCard extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 8),
-                fileUrl.isNotEmpty
-                    ? _buildFilePreview(context, fileUrl)
-                    : _buildLegacyPreview(),
+                ProofActionButtons(fileUrl: fileUrl),
               ],
             ),
           ),

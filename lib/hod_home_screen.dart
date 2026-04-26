@@ -1,12 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
 import 'widgets/portal_od_helpers.dart';
+import 'widgets/proof_action_buttons.dart';
 import 'widgets/role_profile_widgets.dart';
 
 const Color kHoDPrimary = Color(0xFF0F3D91);
@@ -29,6 +27,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
   bool _busy = false;
   String? _error;
   List<Map<String, dynamic>> _requests = [];
+  List<Map<String, dynamic>> _history = [];
   List<Map<String, dynamic>> _sessions = [];
   Map<String, dynamic> _analytics = const {};
 
@@ -67,6 +66,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
       HoDApi.queue(),
       HoDApi.analytics(),
       HoDApi.activeSessions(),
+      HoDApi.history(),
     ]);
     if (!mounted) {
       _busy = false;
@@ -76,6 +76,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
     final queueRes = results[0] as ApiResult<dynamic>;
     final analyticsRes = results[1] as ApiResult<dynamic>;
     final sessionsRes = results[2] as ApiResult<dynamic>;
+    final historyRes = results[3] as ApiResult<dynamic>;
 
     setState(() {
       _loading = false;
@@ -91,6 +92,9 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
 
       if (sessionsRes.ok) {
         _sessions = _mapList(sessionsRes.data);
+      }
+      if (historyRes.ok) {
+        _history = _mapList(historyRes.data);
       }
     });
     _busy = false;
@@ -135,49 +139,6 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
       reason: reason,
     );
     await _loadAll();
-  }
-
-  Future<void> _openProof(Map<String, dynamic> row) async {
-    final fileUrl = row['file_url']?.toString().trim() ?? '';
-    if (fileUrl.isNotEmpty) {
-      final uri = Uri.tryParse(getFullUrl(fileUrl));
-      if (uri != null) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        return;
-      }
-    }
-
-    final b64 = row['attachment_base64']?.toString();
-    final mime = row['attachment_mime']?.toString();
-
-    if (b64 == null || mime == null || b64.isEmpty || mime.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No image proof uploaded')));
-      return;
-    }
-    if (!mime.startsWith('image/')) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Only image proof preview is supported')),
-      );
-      return;
-    }
-
-    final bytes = base64Decode(b64);
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: InteractiveViewer(
-            child: Image.memory(bytes, fit: BoxFit.contain),
-          ),
-        ),
-      ),
-    );
   }
 
   @override
@@ -250,6 +211,8 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
       case 2:
         return 'OD Requests';
       case 3:
+        return 'History';
+      case 4:
         return 'Profile';
       default:
         return 'Dashboard';
@@ -263,11 +226,12 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
           requests: _requests,
           onApprove: _approve,
           onReject: _reject,
-          onViewProof: _openProof,
         );
       case 2:
         return _EventsPanel(sessions: _sessions, requests: _requests);
       case 3:
+        return _HistoryPanel(rows: _history);
+      case 4:
         return _ProfilePanel(onLogout: _logout);
       default:
         return _DashboardPanel(
@@ -388,10 +352,16 @@ class _Sidebar extends StatelessWidget {
             onTap: () => onTap(2),
           ),
           _SidebarItem(
-            icon: Icons.person_rounded,
-            label: 'Profile',
+            icon: Icons.history_rounded,
+            label: 'History',
             active: current == 3,
             onTap: () => onTap(3),
+          ),
+          _SidebarItem(
+            icon: Icons.person_rounded,
+            label: 'Profile',
+            active: current == 4,
+            onTap: () => onTap(4),
           ),
           const Spacer(),
           const Padding(
@@ -589,13 +559,11 @@ class _ParticipantsTable extends StatelessWidget {
     required this.requests,
     required this.onApprove,
     required this.onReject,
-    required this.onViewProof,
   });
 
   final List<Map<String, dynamic>> requests;
   final ValueChanged<Map<String, dynamic>> onApprove;
   final ValueChanged<Map<String, dynamic>> onReject;
-  final ValueChanged<Map<String, dynamic>> onViewProof;
 
   @override
   Widget build(BuildContext context) {
@@ -614,7 +582,6 @@ class _ParticipantsTable extends StatelessWidget {
               row: row,
               onApprove: () => onApprove(row),
               onReject: () => onReject(row),
-              onViewProof: () => onViewProof(row),
             ),
           )
           .toList(),
@@ -627,20 +594,14 @@ class _ParticipantCard extends StatelessWidget {
     required this.row,
     required this.onApprove,
     required this.onReject,
-    required this.onViewProof,
   });
 
   final Map<String, dynamic> row;
   final VoidCallback onApprove;
   final VoidCallback onReject;
-  final VoidCallback onViewProof;
 
   @override
   Widget build(BuildContext context) {
-    final hasProof =
-        (row['file_url']?.toString().trim().isNotEmpty ?? false) ||
-        ((row['attachment_base64']?.toString().isNotEmpty ?? false) &&
-            (row['attachment_mime']?.toString().isNotEmpty ?? false));
     final formattedDate = portalOdDateTime(row['datetime']);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -671,13 +632,10 @@ class _ParticipantCard extends StatelessWidget {
             children: [
               FilledButton(onPressed: onApprove, child: const Text('Approve')),
               OutlinedButton(onPressed: onReject, child: const Text('Reject')),
-              if (hasProof)
-                TextButton(
-                  onPressed: onViewProof,
-                  child: const Text('View Proof'),
-                ),
             ],
           ),
+          const SizedBox(height: 8),
+          ProofActionButtons(fileUrl: row['file_url']?.toString() ?? ''),
         ],
       ),
     );
@@ -765,6 +723,72 @@ class _EventsPanel extends StatelessWidget {
             );
           }),
       ],
+    );
+  }
+}
+
+class _HistoryPanel extends StatelessWidget {
+  const _HistoryPanel({required this.rows});
+
+  final List<Map<String, dynamic>> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final historyRows = rows.where((r) {
+      return r['hod_approved'] == true || r['rejected'] == true;
+    }).toList();
+
+    if (historyRows.isEmpty) {
+      return const _EmptyState(
+        icon: Icons.history_rounded,
+        title: 'No history records',
+        subtitle: 'Approved and rejected requests appear here.',
+      );
+    }
+
+    return Column(
+      children: historyRows.map((row) {
+        final status = row['status']?.toString() ?? 'Pending';
+        final isApproved = status.toLowerCase() == 'approved';
+        final color = isApproved ? Colors.green : Colors.red;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE6ECF5)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isApproved ? Icons.check_circle : Icons.cancel,
+                color: color,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      row['event_name']?.toString() ?? 'Untitled event',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      portalOdDateTime(row['datetime']),
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                status,
+                style: TextStyle(color: color, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }

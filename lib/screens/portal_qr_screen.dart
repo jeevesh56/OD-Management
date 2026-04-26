@@ -139,11 +139,14 @@ class PortalQrScreen extends StatelessWidget {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.verified_rounded,
-                                  color: Colors.green.shade700, size: 20),
+                              Icon(
+                                Icons.verified_rounded,
+                                color: Colors.green.shade700,
+                                size: 20,
+                              ),
                               const SizedBox(width: 8),
                               Text(
-                                'HoD approved OD',
+                                'Principal approved OD',
                                 style: TextStyle(
                                   color: scheme.onSecondaryContainer,
                                   fontWeight: FontWeight.w600,

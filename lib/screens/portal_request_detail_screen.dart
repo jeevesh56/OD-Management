@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api_service.dart';
 import '../widgets/portal_od_helpers.dart';
@@ -168,6 +169,16 @@ class PortalRequestDetailScreen extends StatelessWidget {
                                 height: 1.45,
                               ),
                             ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Proof',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            _proofLink(context, request),
                             const SizedBox(height: 20),
                             const Text(
                               'Approval progress',
@@ -357,6 +368,33 @@ class PortalRequestDetailScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  static Widget _proofLink(
+    BuildContext context,
+    Map<dynamic, dynamic> request,
+  ) {
+    final fileUrl = request['file_url']?.toString().trim() ?? '';
+    if (fileUrl.isEmpty) {
+      return const Text('No proof uploaded');
+    }
+    final fullUrl = getFullUrl(fileUrl);
+    return GestureDetector(
+      onTap: () async {
+        final uri = Uri.tryParse(fullUrl);
+        if (uri != null) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      },
+      child: const Text(
+        'View uploaded proof',
+        style: TextStyle(
+          color: Colors.blue,
+          fontWeight: FontWeight.w600,
+          decoration: TextDecoration.underline,
+        ),
       ),
     );
   }

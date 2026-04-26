@@ -1,29 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../data/repositories/firebase_auth_repository.dart';
+import '../../app/app_providers.dart';
 
-class ChangePasswordScreen extends StatefulWidget {
-  const ChangePasswordScreen({super.key, required this.authRepository});
-
-  final FirebaseAuthRepository authRepository;
-
+class ChangePasswordScreen extends ConsumerStatefulWidget {
+  const ChangePasswordScreen({super.key});
   @override
-  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
+  ConsumerState<ChangePasswordScreen> createState() =>
+      _ChangePasswordScreenState();
 }
 
-class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
+class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   final _passwordCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
     _passwordCtrl.dispose();
+    _confirmCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     final password = _passwordCtrl.text.trim();
+    final confirm = _confirmCtrl.text.trim();
+    if (password != confirm) {
+      setState(() => _error = 'Passwords do not match.');
+      return;
+    }
     if (password.length < 8) {
       setState(() => _error = 'Password must be at least 8 characters.');
       return;
@@ -33,7 +39,12 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       _error = null;
     });
     try {
-      await widget.authRepository.updatePassword(password);
+      await ref.read(userProfileServiceProvider).changePassword(password);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Password updated successfully')),
+        );
+      }
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -58,8 +69,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 TextField(
                   controller: _passwordCtrl,
                   obscureText: true,
+                  decoration: const InputDecoration(labelText: 'New password'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _confirmCtrl,
+                  obscureText: true,
                   decoration: const InputDecoration(
-                    labelText: 'New password',
+                    labelText: 'Confirm new password',
                   ),
                 ),
                 if (_error != null) ...[
