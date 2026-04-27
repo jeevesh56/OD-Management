@@ -16,6 +16,7 @@ import 'widgets/portal_od_helpers.dart';
 import 'widgets/portal_page_layout.dart';
 import 'widgets/portal_request_card.dart';
 import 'widgets/proof_action_buttons.dart';
+import 'widgets/timetable_page.dart';
 
 const Color kStudentPrimary = Color(0xFF1257B0);
 const Color kStudentSidebar = Color(0xFF102A5C);
@@ -309,10 +310,33 @@ class _StudentTopbar extends StatelessWidget {
             onPressed: onToggleTheme,
             icon: const Icon(Icons.brightness_6_outlined),
           ),
-          CircleAvatar(
-            backgroundColor: kStudentPrimary.withValues(alpha: 0.1),
-            foregroundColor: kStudentPrimary,
-            child: Text(name.substring(0, 1).toUpperCase()),
+          PopupMenuButton<String>(
+            tooltip: 'Profile Menu',
+            offset: const Offset(0, 48),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            icon: CircleAvatar(
+              backgroundColor: kStudentPrimary.withOpacity(0.1),
+              foregroundColor: kStudentPrimary,
+              child: Text(name.substring(0, 1).toUpperCase()),
+            ),
+            onSelected: (value) {
+              if (value == "timetable") {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TimetablePage()),
+                );
+              } else if (value == "logout") {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const ODLoginUI()),
+                );
+              }
+              // Add more actions as needed
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: "profile", child: Text("Profile")),
+              const PopupMenuItem(value: "timetable", child: Text("Timetable")),
+              const PopupMenuItem(value: "logout", child: Text("Logout")),
+            ],
           ),
           if (isDesktop) ...[
             const SizedBox(width: 8),
@@ -761,82 +785,37 @@ class _DashboardState extends State<_Dashboard> {
           style: const TextStyle(color: Colors.grey),
         ),
         const SizedBox(height: 16),
-        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('od_requests')
-              .where('student_id', isEqualTo: AuthStore.userId ?? '')
-              .orderBy('created_at', descending: true)
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-
-            if (snapshot.hasError) {
-              return Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
+        if (requests.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 40,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.inbox, size: 40, color: Colors.grey),
+                SizedBox(height: 12),
+                Text(
+                  'No OD requests yet — use New OD to submit.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
                 ),
-                child: const Text(
-                  'Unable to load OD requests right now.',
-                  style: TextStyle(color: Colors.redAccent),
-                ),
-              );
-            }
-
-            final docs = snapshot.data?.docs ?? const [];
-            if (docs.isEmpty) {
-              return Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 40,
-                ),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                ),
-                child: const Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.inbox, size: 40, color: Colors.grey),
-                    SizedBox(height: 12),
-                    Text(
-                      'No OD requests yet — use New OD to submit.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return Column(
-              children: docs.map((doc) {
-                final data = doc.data();
-                final item = <String, dynamic>{
-                  ...data,
-                  'id': data['id']?.toString().isNotEmpty == true
-                      ? data['id']
-                      : doc.id,
-                };
-                return PortalRequestCard(r: item);
-              }).toList(),
-            );
-          },
-        ),
+              ],
+            ),
+          )
+        else
+          Column(
+            children: requests.map((item) => PortalRequestCard(r: item)).toList(),
+          ),
       ],
     );
   }

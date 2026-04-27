@@ -43,12 +43,12 @@ class ProofActionButtons extends StatelessWidget {
 
     if (_looksLikeImage(fullUrl)) {
       if (!context.mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => Scaffold(
-            appBar: AppBar(title: const Text('Proof')),
-            body: Center(child: Image.network(fullUrl)),
+      await showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            child: Image.network(fullUrl),
           ),
         ),
       );
