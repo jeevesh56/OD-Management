@@ -3,208 +3,63 @@ import 'package:flutter/material.dart';
 import 'data/services/firestore_paths.dart';
 
 // Shared role colors used across OD Manager screens.
+
+// Shared role colors used across OD Manager screens.
 const Color kBlue = Color(0xFF1565C0);
 const Color kRed = Color(0xFFB71C1C);
 
-String getFullUrl(String path) {
-  return path.trim();
+String getFullUrl(String path) => path.trim();
+
+// All data, auth, and Firestore logic is now handled by repository/services layer.
+class ApiResult<T> {
+  ApiResult.success(this.data) : ok = true, error = null;
+  ApiResult.fail(this.error) : ok = false, data = null;
+
+  final bool ok;
+  final T? data;
+  final String? error;
 }
 
-const String kRegNumberPrefix = '2117240020';
-
 class AuthStore {
-  static String? token;
-  static String? role;
-  static String? userId;
+  static String role = 'student';
   static String? fullName;
-  static String? userDepartment;
   static Map<String, dynamic>? studentProfile;
-  static String? studentLoginEmail;
+  static String? _loginEmail;
 
-  static String registrationFromLoginEmail([String? email]) {
-    final e = (email ?? studentLoginEmail ?? '').trim();
-    if (e.isEmpty) return '';
-    final at = e.indexOf('@');
-    final local = at > 0 ? e.substring(0, at) : e;
-    final typed = local.contains('.') ? local.split('.').last : local;
-    final last3 = typed.length >= 3 ? typed.substring(typed.length - 3) : typed;
-    return kRegNumberPrefix + last3;
-  }
+  static void setLoginEmail(String? email) => _loginEmail = email;
 
-  static String displayNameFromStudentEmail(String email) {
-    final trimmed = email.trim();
-    if (trimmed.isEmpty) return 'Student';
-    final i = trimmed.indexOf('@');
-    if (i <= 0) return 'Student';
-    final prefix = trimmed.substring(0, i);
-    if (prefix.isEmpty) return 'Student';
-    final firstPart = prefix.contains('.') ? prefix.split('.').first : prefix;
-    if (firstPart.isEmpty) return 'Student';
-    return firstPart[0].toUpperCase() + firstPart.substring(1).toLowerCase();
-  }
-
-  static bool isValidRoleEmail(String email) {
-    final e = email.trim().toLowerCase();
-    return RegExp(r'^[a-zA-Z]+@[a-zA-Z]+\.ritchennai\.edu\.in$').hasMatch(e);
-  }
-
-  static String roleNameFromEmail(String email) {
-    final e = email.trim();
-    final at = e.indexOf('@');
-    if (at <= 0) return 'User';
-    final raw = e.substring(0, at);
-    if (raw.isEmpty) return 'User';
-    return raw[0].toUpperCase() + raw.substring(1).toLowerCase();
-  }
-
-  static String roleDepartmentFromEmail(String email) {
-    final e = email.trim();
-    final at = e.indexOf('@');
-    if (at <= 0) return 'Department';
-    final domain = e.substring(at + 1);
-    final parts = domain.split('.');
-    final raw = parts.isNotEmpty ? parts.first : '';
-    if (raw.isEmpty) return 'Department';
-    return raw.toUpperCase();
-  }
-
-  static void applyStudentLogin(String email) {
-    studentLoginEmail = email.trim();
-    fullName = displayNameFromStudentEmail(email);
-    userDepartment = 'CSE';
-    userId = registrationFromLoginEmail(email);
-    studentProfile = {
-      'register_number': registrationFromLoginEmail(email),
-      'department': 'CSE',
-      'section': 'A',
-      'semester': '4',
-      'batch': '2024',
-      'attendance_percent': '85',
-    };
-    role = 'student';
-  }
-
-  static void applyMentorLogin(String input) {
-    final email = input.trim();
-    fullName = email.contains('@') ? roleNameFromEmail(email) : 'Mentor';
-    userDepartment = email.contains('@')
-        ? roleDepartmentFromEmail(email)
-        : 'Department';
-    userId = email.isNotEmpty ? email : 'mentor_user';
-    role = 'mentor';
-  }
-
-  static void applyHodLogin(String input) {
-    final email = input.trim();
-    fullName = email.contains('@') ? roleNameFromEmail(email) : 'HoD';
-    userDepartment = email.contains('@')
-        ? roleDepartmentFromEmail(email)
-        : 'Department';
-    userId = email.isNotEmpty ? email : 'hod_user';
-    role = 'hod';
-  }
-
-  static void applyPrincipalLogin(String input) {
-    final email = input.trim();
-    fullName = email.contains('@') ? roleNameFromEmail(email) : 'Principal';
-    userDepartment = email.contains('@')
-        ? roleDepartmentFromEmail(email)
-        : 'Department';
-    userId = email.isNotEmpty ? email : 'principal_user';
-    role = 'principal';
+  static String registrationFromLoginEmail() {
+    final email = _loginEmail?.trim().toLowerCase() ?? '';
+    if (email.isEmpty || !email.contains('@')) return '';
+    return email.split('@').first;
   }
 
   static void clear() {
-    token = null;
-    role = null;
-    userId = null;
+    role = 'student';
     fullName = null;
-    userDepartment = null;
     studentProfile = null;
-    studentLoginEmail = null;
+    _loginEmail = null;
   }
-
-  static Map<String, String> get headers => {
-    'Content-Type': 'application/json',
-  };
-}
-
-class ApiResult<T> {
-  final T? data;
-  final String? error;
-  bool get ok => error == null;
-
-  ApiResult.success(this.data) : error = null;
-  ApiResult.fail(this.error) : data = null;
 }
 
 class _FirestoreApi {
-  static final FirebaseFirestore db = FirebaseFirestore.instance;
-
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
   static CollectionReference<Map<String, dynamic>> get odRequests =>
-      db.collection('od_requests');
-
-  static String normalizeStatus(Map<String, dynamic> row) {
-    final raw = row['status']?.toString().trim() ?? '';
-    final upper = raw.toUpperCase();
-    final fullyApproved =
-        row['mentor_approved'] == true &&
-        row['hod_approved'] == true &&
-        row['principal_approved'] == true;
-
-    if (upper == 'APPROVED' ||
-        upper == 'PRINCIPAL_APPROVED' ||
-        row['principal_approved'] == true ||
-        fullyApproved) {
-      return 'Approved';
-    }
-    if (row['rejected'] == true ||
-        upper == 'REJECTED' ||
-        upper.contains('REJECTED')) {
-      return 'Rejected';
-    }
-    if (upper == 'EXPIRED' || row['expired'] == true) {
-      return 'Expired';
-    }
-    return 'Pending';
-  }
-
-  static Map<String, dynamic> normalizeDoc(
-    String id,
-    Map<String, dynamic> data,
-  ) {
-    final out = <String, dynamic>{'id': id, ...data};
-
-    final datetime = out['datetime']?.toString().trim();
-    if (datetime == null || datetime.isEmpty) {
-      out['datetime'] = out['start_datetime']?.toString() ?? '';
-    }
-
-    if ((out['organizer']?.toString().trim().isEmpty ?? true) &&
-        out['organiser'] != null) {
-      out['organizer'] = out['organiser'];
-    }
-
-    out['mentor_approved'] = out['mentor_approved'] == true;
-    out['hod_approved'] = out['hod_approved'] == true;
-    out['principal_approved'] = out['principal_approved'] == true;
-    out['rejected'] = out['rejected'] == true;
-    out['status'] = normalizeStatus(out);
-    out['expired'] = out['status'] == 'Expired';
-    out['is_pinned'] = out['is_pinned'] == true;
-
-    return out;
-  }
+      _db.collection(FirestorePaths.odRequests);
+  static CollectionReference<Map<String, dynamic>> get notifications =>
+      _db.collection(FirestorePaths.notifications);
 
   static Future<List<Map<String, dynamic>>> allRequests() async {
-    final snap = await odRequests.orderBy('created_at', descending: true).get();
-    return snap.docs.map((d) => normalizeDoc(d.id, d.data())).toList();
+    final snap = await odRequests.orderBy('updated_at', descending: true).get();
+    return snap.docs
+        .map((doc) => <String, dynamic>{'id': doc.id, ...doc.data()})
+        .toList();
   }
 
   static Future<Map<String, dynamic>?> requestById(String id) async {
     final doc = await odRequests.doc(id).get();
     if (!doc.exists) return null;
-    return normalizeDoc(doc.id, doc.data() ?? <String, dynamic>{});
+    return <String, dynamic>{'id': doc.id, ...?doc.data()};
   }
 
   static Future<void> sendRoleNotification({
@@ -213,172 +68,45 @@ class _FirestoreApi {
     required String body,
     String? requestId,
   }) async {
-    final users = await db
-        .collection('users')
-        .where('role', isEqualTo: role)
-        .get();
-    for (final user in users.docs) {
-      final token = user.data()['fcm_token']?.toString() ?? '';
-      await db.collection(FirestorePaths.notifications).add({
-        'user_role': role,
-        'to_user_id': user.id,
-        'token': token,
-        'title': title,
-        'message': body,
-        'request_id': requestId,
-        'seen': false,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    }
-  }
-}
-
-class AuthApi {
-  static Future<ApiResult<Map>> login({
-    required String emailOrId,
-    required String password,
-    String role = 'student',
-  }) async {
-    if (password.trim().isEmpty) {
-      return ApiResult.fail('Password cannot be empty');
-    }
-
-    if (role == 'student') {
-      AuthStore.applyStudentLogin(emailOrId);
-    } else if (role == 'mentor') {
-      AuthStore.applyMentorLogin(emailOrId);
-    } else if (role == 'hod') {
-      AuthStore.applyHodLogin(emailOrId);
-    } else if (role == 'principal') {
-      AuthStore.applyPrincipalLogin(emailOrId);
-    }
-
-    return ApiResult.success(<String, dynamic>{
-      'role': AuthStore.role,
-      'user_id': AuthStore.userId,
-      'full_name': AuthStore.fullName,
+    await notifications.add({
+      'role': role,
+      'title': title,
+      'message': body,
+      'request_id': requestId,
+      'seen': false,
+      'created_at': FieldValue.serverTimestamp(),
     });
   }
 }
 
 class OdApi {
-  static Future<List<dynamic>> fetchRequests() async {
-    final rows = await _FirestoreApi.allRequests();
-    return rows;
-  }
-
-  static Future<ApiResult<Map>> submit({
-    required String eventName,
-    required String datetime,
-    required String venue,
-    required String organizer,
-    required String reason,
-    String? fileUrl,
-    String? attachmentBase64,
-    String? attachmentMime,
-    String? attachmentName,
-  }) async {
+  static Future<ApiResult<List>> myRequests() async {
     try {
-      final docRef = await _FirestoreApi.odRequests.add({
-        'event_name': eventName,
-        'organizer': organizer,
-        'organiser': organizer,
-        'venue': venue,
-        'datetime': datetime,
-        'start_datetime': datetime,
-        'reason': reason,
-        'file_url': fileUrl,
-        'attachment_base64': attachmentBase64,
-        'attachment_mime': attachmentMime,
-        'attachment_name': attachmentName,
-        'status': 'Pending',
-        'mentor_approved': false,
-        'hod_approved': false,
-        'principal_approved': false,
-        'rejected': false,
-        'expired': false,
-        'is_pinned': false,
-        'created_at': FieldValue.serverTimestamp(),
-        'student_name': AuthStore.fullName ?? 'Student',
-        'student_id': AuthStore.userId ?? '',
-      });
-
-      final row = await _FirestoreApi.requestById(docRef.id);
-      await _FirestoreApi.sendRoleNotification(
-        role: 'mentor',
-        title: 'New OD Request',
-        body: 'A student submitted OD request',
-        requestId: docRef.id,
-      );
-      return ApiResult.success(row ?? <String, dynamic>{'id': docRef.id});
-    } catch (e) {
-      return ApiResult.fail('Failed to submit request: $e');
-    }
-  }
-
-  static Future<ApiResult<List>> events() async {
-    try {
-      return ApiResult.success(await fetchRequests());
+      return ApiResult.success(await _FirestoreApi.allRequests());
     } catch (e) {
       return ApiResult.fail('Failed to load requests: $e');
     }
   }
 
-  static Future<ApiResult<List>> myRequests() async {
-    try {
-      final rows = await fetchRequests();
-      return ApiResult.success(rows);
-    } catch (e) {
-      return ApiResult.fail('Failed to fetch requests: $e');
-    }
+  static Future<ApiResult<Map>> activeSession() async {
+    return ApiResult.success({'has_active_session': false});
   }
 
-  static Future<ApiResult<Map>> resubmitRequest(
-    Map<dynamic, dynamic> item,
-  ) async {
-    final id = item['id']?.toString() ?? '';
-    if (id.isEmpty) {
-      return ApiResult.fail('Invalid request id for resubmission.');
-    }
-
+  static Future<ApiResult<Map>> resubmitRequest(Map item) async {
     try {
+      final id = item['id']?.toString() ?? '';
+      if (id.isEmpty) return ApiResult.fail('Missing request id');
       await _FirestoreApi.odRequests.doc(id).update({
-        'status': 'Pending',
-        'mentor_approved': false,
-        'hod_approved': false,
-        'principal_approved': false,
         'rejected': false,
-        'expired': false,
+        'status': 'Pending',
         'updated_at': FieldValue.serverTimestamp(),
       });
-      final row = await _FirestoreApi.requestById(id);
-      if (row == null) return ApiResult.fail('Request not found');
-      return ApiResult.success(row);
+      final updated = await _FirestoreApi.requestById(id);
+      if (updated == null) return ApiResult.fail('Request not found');
+      return ApiResult.success(updated);
     } catch (e) {
-      return ApiResult.fail('Failed to resubmit request: $e');
+      return ApiResult.fail('Resubmit failed: $e');
     }
-  }
-
-  static Future<ApiResult<Map>> checkOverlap({
-    required String startDate,
-    required String endDate,
-  }) async {
-    return ApiResult.success(<String, dynamic>{'has_overlap': false});
-  }
-
-  static Future<ApiResult<Map>> activeSession() async {
-    return ApiResult.success(<String, dynamic>{'has_active_session': false});
-  }
-
-  static Stream<List<Map<String, dynamic>>> getODRequests() {
-    return _FirestoreApi.odRequests
-        .orderBy('created_at', descending: true)
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => _FirestoreApi.normalizeDoc(doc.id, doc.data()))
-              .toList(),
-        );
   }
 }
 

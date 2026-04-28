@@ -34,6 +34,7 @@ import '../screens/profile/edit_profile_screen.dart';
 import '../screens/qr/qr_scan_screen.dart';
 import '../screens/workflow/reviewer_queue_screen.dart';
 import '../screens/workflow/student_od_submit_screen.dart';
+import '../screens/notifications/notification_center_screen.dart';
 
 final firebaseAuthProvider = Provider<FirebaseAuth>((ref) {
   return FirebaseAuth.instance;
@@ -182,6 +183,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => QrScanScreen(
           verificationService: ref.read(qrVerificationServiceProvider),
         ),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationCenterScreen(),
       ),
     ],
     redirect: (context, state) {

@@ -3,7 +3,6 @@ enum UserRole {
   mentor,
   hod,
   principal,
-  ec,
   admin,
 }
 
@@ -13,7 +12,6 @@ extension UserRoleX on UserRole {
         UserRole.mentor => 'mentor',
         UserRole.hod => 'hod',
         UserRole.principal => 'principal',
-        UserRole.ec => 'ec',
         UserRole.admin => 'admin',
       };
 

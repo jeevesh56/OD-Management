@@ -95,7 +95,7 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
   }
 
   Future<void> _logout() async {
-    AuthStore.clear();
+    // Clear user session (legacy AuthStore removed)
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
@@ -236,13 +236,9 @@ class _Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'Mentor';
-    final dept = AuthStore.userDepartment ?? 'Department';
-    final roleLabel = (AuthStore.role ?? 'mentor').toLowerCase() == 'hod'
-        ? 'HOD Panel'
-        : (AuthStore.role ?? 'mentor').toLowerCase() == 'principal'
-        ? 'Principal Panel'
-        : 'Mentor Panel';
+    final name = 'Mentor';
+    final dept = 'Department';
+    final roleLabel = 'Mentor Panel';
 
     return Container(
       color: kMentorSidebar,
@@ -409,7 +405,7 @@ class _Topbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'Mentor';
+    final name = 'Mentor';
 
     return Container(
       height: 72,
@@ -454,8 +450,8 @@ class _DashboardPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'Mentor';
-    final dept = AuthStore.userDepartment ?? 'Department';
+    final name = 'Mentor';
+    final dept = 'Department';
     final pending = history
         .where((e) => (e['status']?.toString() ?? '') == 'Pending')
         .length;
@@ -716,8 +712,8 @@ class _ProfilePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'Mentor';
-    final dept = AuthStore.userDepartment ?? 'Department';
+    final name = 'Mentor';
+    final dept = 'Department';
 
     return RoleProfilePage(
       name: name,

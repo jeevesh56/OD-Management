@@ -119,8 +119,8 @@ class _StudentSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'Student';
-    final dept = AuthStore.userDepartment ?? 'Department';
+    final name = 'Student';
+    final dept = 'Department';
 
     return Container(
       color: kStudentSidebar,
@@ -287,7 +287,7 @@ class _StudentTopbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'Student';
+    final name = 'Student';
     final scheme = Theme.of(context).colorScheme;
 
     return Container(
@@ -315,7 +315,7 @@ class _StudentTopbar extends StatelessWidget {
             offset: const Offset(0, 48),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             icon: CircleAvatar(
-              backgroundColor: kStudentPrimary.withOpacity(0.1),
+              backgroundColor: kStudentPrimary.withValues(alpha: 0.1),
               foregroundColor: kStudentPrimary,
               child: Text(name.substring(0, 1).toUpperCase()),
             ),
@@ -455,12 +455,12 @@ class _DashboardState extends State<_Dashboard> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final name = AuthStore.fullName ?? 'Student';
-    final sp = AuthStore.studentProfile;
+    final name = 'Student';
+    final sp = {};
     final section =
-        sp?['section']?.toString() ??
-        sp?['class']?.toString() ??
-        sp?['department']?.toString() ??
+        sp['section']?.toString() ??
+        sp['class']?.toString() ??
+        sp['department']?.toString() ??
         '';
     final welcomeSub = section.isNotEmpty
         ? 'Welcome, $name ($section)'
@@ -933,8 +933,8 @@ class _NewODPageState extends State<_NewODPage> {
         'is_pinned': false,
         'expired': false,
         'created_at': FieldValue.serverTimestamp(),
-        'student_name': AuthStore.fullName ?? 'Student',
-        'student_id': AuthStore.userId ?? '',
+        'student_name': 'Student',
+        'student_id': '',
       });
       await FirebaseFirestore.instance.collection('notifications').add({
         'user_role': 'mentor',
@@ -991,7 +991,7 @@ class _NewODPageState extends State<_NewODPage> {
 
     if (date == null) return;
 
-    if (!context.mounted) return;
+    if (!mounted) return;
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
@@ -1546,8 +1546,8 @@ class _ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'Student';
-    final sp = AuthStore.studentProfile ?? {};
+    final name = 'Student';
+    final sp = {};
     final initials = name
         .split(' ')
         .take(2)
@@ -1632,7 +1632,7 @@ class _ProfilePage extends StatelessWidget {
                     ),
                   ),
                   onPressed: () {
-                    AuthStore.clear();
+                    // Clear user session (legacy AuthStore removed)
                     Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(builder: (_) => const ODLoginUI()),

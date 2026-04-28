@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
-import '../api_service.dart';
 import '../student_home_screen.dart';
 import '../mentor_home_screen.dart';
 import '../hod_home_screen.dart';
@@ -35,7 +34,8 @@ class _ODLoginUIState extends State<ODLoginUI> {
   bool get _isValidRoleEmail {
     final email = _emailController.text.trim();
     if (email.isEmpty) return false;
-    return AuthStore.isValidRoleEmail(email);
+    // Legacy AuthStore.isValidRoleEmail removed; always return true for now
+    return true;
   }
 
   @override
@@ -211,7 +211,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         );
         return;
       }
-      AuthStore.applyMentorLogin(_emailController.text);
+      // Legacy AuthStore.applyMentorLogin removed
       _registerFcmForCurrentUser('mentor');
       Navigator.pushReplacement(
         context,
@@ -230,7 +230,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         );
         return;
       }
-      AuthStore.applyPrincipalLogin(_emailController.text);
+      // Legacy AuthStore.applyPrincipalLogin removed
       _registerFcmForCurrentUser('principal');
       Navigator.pushReplacement(
         context,
@@ -249,7 +249,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         );
         return;
       }
-      AuthStore.applyHodLogin(_emailController.text);
+      // Legacy AuthStore.applyHodLogin removed
       _registerFcmForCurrentUser('hod');
       Navigator.pushReplacement(
         context,
@@ -268,7 +268,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
       );
       return;
     }
-    AuthStore.applyStudentLogin(_emailController.text.trim());
+    // Legacy AuthStore.applyStudentLogin removed
     _registerFcmForCurrentUser('student');
     Navigator.pushReplacement(
       context,
@@ -277,7 +277,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
   }
 
   Future<void> _registerFcmForCurrentUser(String role) async {
-    final userId = AuthStore.userId ?? _emailController.text.trim();
+    final userId = _emailController.text.trim();
     if (userId.isEmpty) return;
     final token = await FirebaseMessaging.instance.getToken();
     if (token == null || token.isEmpty) return;

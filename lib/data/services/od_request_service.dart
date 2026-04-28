@@ -22,13 +22,14 @@ class OdRequestService {
 
   Future<RuleValidationResult> createRequest({
     required UserRole actorRole,
+    bool actorIsEc = false,
     required OdRequest request,
   }) async {
-    if (!_roleAccessService.canCreateOd(actorRole)) {
+    if (!_roleAccessService.canCreateOd(actorRole, isEc: actorIsEc)) {
       return const RuleValidationResult([
         RuleViolation(
           code: 'UNAUTHORIZED_OD_CREATE',
-          message: 'Only student and EC can create OD requests.',
+          message: 'Only students and mentors with EC permission can create OD requests.',
         ),
       ]);
     }
@@ -134,7 +135,6 @@ class OdRequestService {
             ? OdStatus.principalApproved
             : OdStatus.principalRejected;
       case UserRole.student:
-      case UserRole.ec:
         return null;
     }
   }

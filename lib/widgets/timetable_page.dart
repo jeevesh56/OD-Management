@@ -44,53 +44,55 @@ final timetable = {
 };
 
 class TimetablePage extends StatelessWidget {
-  const TimetablePage({Key? key}) : super(key: key);
+  const TimetablePage({super.key});
+
+  static const periods = ["P1", "P2", "P3", "P4", "P5", "P6", "P7"];
+  static const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
   @override
   Widget build(BuildContext context) {
+    // Build a grid: Rows = Days, Columns = Periods
+    // For demo, map each slot to a period (by index)
     return Scaffold(
       appBar: AppBar(title: const Text("Timetable")),
-      body: ListView(
-        children: timetable.entries.map((day) {
-          return Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  day.key,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ...day.value.map<Widget>((slot) {
-                  return Container(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: slot["isLab"] == true
-                          ? Colors.blue.withOpacity(0.2)
-                          : Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: [
+            const DataColumn(label: Text("Day")),
+            ...periods.map((p) => DataColumn(label: Text(p))),
+          ],
+          rows: days.map((day) {
+            final slots = timetable[day] ?? [];
+            return DataRow(
+              cells: [
+                DataCell(Text(day)),
+                ...List.generate(periods.length, (i) {
+                  if (i < slots.length) {
+                    final slot = slots[i];
+                    return DataCell(Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(slot["time"] as String),
-                        Text(
-                          slot["subject"] as String,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                        Text(slot["subject"] as String,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: slot["isLab"] == true
+                                  ? Colors.blue
+                                  : null,
+                            )),
+                        Text(slot["time"] as String,
+                            style: const TextStyle(fontSize: 11)),
                       ],
-                    ),
-                  );
-                }).toList(),
+                    ));
+                  } else {
+                    return const DataCell(Text("-"));
+                  }
+                }),
               ],
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }

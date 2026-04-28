@@ -7,6 +7,7 @@ class AppUserModel extends AppUser {
     required super.email,
     required super.fullName,
     required super.role,
+    super.isEc,
     super.regNo,
     super.staffId,
     super.phone,
@@ -22,11 +23,16 @@ class AppUserModel extends AppUser {
   });
 
   factory AppUserModel.fromMap(String id, Map<String, dynamic> map) {
+    // legacy: some users may have role 'ec' in the DB. Treat those as mentors with isEc=true
+    final rawRole = map['role'] as String? ?? 'student';
+    final isEcFlag = (map['is_ec'] as bool?) ?? rawRole == 'ec';
+
     return AppUserModel(
       id: id,
       email: map['email'] as String? ?? '',
       fullName: map['full_name'] as String? ?? '',
-      role: UserRoleX.fromValue(map['role'] as String? ?? 'student'),
+      role: UserRoleX.fromValue(rawRole == 'ec' ? 'mentor' : rawRole),
+      isEc: isEcFlag,
       regNo: map['reg_no'] as String?,
       staffId: map['staff_id'] as String?,
       phone: map['phone'] as String?,
@@ -47,6 +53,7 @@ class AppUserModel extends AppUser {
       'email': email,
       'full_name': fullName,
       'role': role.value,
+      'is_ec': isEc,
       'reg_no': regNo,
       'staff_id': staffId,
       'phone': phone,

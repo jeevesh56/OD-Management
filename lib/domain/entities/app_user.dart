@@ -18,6 +18,7 @@ class AppUser {
     this.updatedAt,
     this.isActive = true,
     this.requiresPasswordChange = false,
+    this.isEc = false,
   });
 
   final String id;
@@ -36,4 +37,5 @@ class AppUser {
   final DateTime? updatedAt;
   final bool isActive;
   final bool requiresPasswordChange;
+  final bool isEc;
 }

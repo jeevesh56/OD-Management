@@ -48,4 +48,71 @@ class NotificationService {
         .doc(notificationId)
         .update({'seen': true});
   }
+
+  Future<void> delete(String notificationId) {
+    return _firestore
+        .collection(FirestorePaths.notifications)
+        .doc(notificationId)
+        .delete();
+  }
+
+  Stream<List<NotificationItem>> watchForRoleItems(String role) {
+    return watchByRole(role).map((snap) => snap.docs.map((d) {
+          final data = d.data();
+          return NotificationItem(
+            id: d.id,
+            role: data['user_role'] as String? ?? role,
+            message: data['message'] as String? ?? '',
+            timestamp: (data['timestamp'] is Timestamp)
+                ? (data['timestamp'] as Timestamp).toDate()
+                : DateTime.now(),
+            seen: data['seen'] as bool? ?? false,
+            requestId: data['request_id'] as String?,
+            stage: data['stage'] as String?,
+          );
+        }).toList());
+  }
+
+      /// Watch notifications for multiple role scopes using `whereIn`.
+      Stream<List<NotificationItem>> watchForRolesItems(List<String> roles) {
+        return _firestore
+            .collection(FirestorePaths.notifications)
+            .where('user_role', whereIn: roles)
+            .orderBy('timestamp', descending: true)
+            .snapshots()
+            .map((snap) => snap.docs.map((d) {
+                  final data = d.data();
+                  return NotificationItem(
+                    id: d.id,
+                    role: data['user_role'] as String? ?? '',
+                    message: data['message'] as String? ?? '',
+                    timestamp: (data['timestamp'] is Timestamp)
+                        ? (data['timestamp'] as Timestamp).toDate()
+                        : DateTime.now(),
+                    seen: data['seen'] as bool? ?? false,
+                    requestId: data['request_id'] as String?,
+                    stage: data['stage'] as String?,
+                  );
+                }).toList());
+      }
+}
+
+class NotificationItem {
+  NotificationItem({
+    required this.id,
+    required this.role,
+    required this.message,
+    required this.timestamp,
+    this.seen = false,
+    this.requestId,
+    this.stage,
+  });
+
+  final String id;
+  final String role;
+  final String message;
+  final DateTime timestamp;
+  final bool seen;
+  final String? requestId;
+  final String? stage;
 }

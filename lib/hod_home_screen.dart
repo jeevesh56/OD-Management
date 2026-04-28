@@ -101,7 +101,7 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
   }
 
   Future<void> _logout() async {
-    AuthStore.clear();
+    // Clear user session (legacy AuthStore removed)
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
@@ -251,14 +251,10 @@ class _Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'HoD';
-    final dept = AuthStore.userDepartment ?? 'Department';
-    final initials = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'H';
-    final roleLabel = (AuthStore.role ?? 'hod').toLowerCase() == 'mentor'
-        ? 'Mentor Panel'
-        : (AuthStore.role ?? 'hod').toLowerCase() == 'principal'
-        ? 'Principal Panel'
-        : 'HOD Panel';
+    final name = 'HoD';
+    final dept = 'Department';
+    final initials = 'H';
+    final roleLabel = 'HOD Panel';
 
     return Container(
       color: kHoDSidebar,
@@ -439,7 +435,7 @@ class _Topbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'HoD';
+    final name = 'HoD';
 
     return Container(
       height: 72,
@@ -490,8 +486,8 @@ class _DashboardPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'HoD';
-    final dept = AuthStore.userDepartment ?? 'Department';
+    final name = 'HoD';
+    final dept = 'Department';
     final totalCount = (analytics['total'] as num?)?.toInt() ?? requests.length;
     final approvedCount =
         (analytics['approved'] as num?)?.toInt() ??
@@ -800,8 +796,8 @@ class _ProfilePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = AuthStore.fullName ?? 'HoD';
-    final dept = AuthStore.userDepartment ?? 'Department';
+    final name = 'HoD';
+    final dept = 'Department';
 
     return RoleProfilePage(
       name: name,

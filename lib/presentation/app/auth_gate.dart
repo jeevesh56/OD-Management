@@ -10,7 +10,6 @@ import 'service_registry.dart';
 import '../screens/admin/admin_home_screen.dart';
 import '../screens/auth/change_password_screen.dart';
 import '../screens/auth/firebase_login_screen.dart';
-import '../screens/ec/ec_home_screen.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key, this.services, required this.firebaseEnabled});
@@ -51,7 +50,6 @@ class AuthGate extends StatelessWidget {
           UserRole.mentor => const MentorHomeScreen(),
           UserRole.hod => const HoDHomeScreen(),
           UserRole.principal => const PrincipalHomeScreen(),
-          UserRole.ec => const EcHomeScreen(),
           UserRole.admin => const AdminHomeScreen(),
         };
       },

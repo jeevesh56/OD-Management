@@ -6,6 +6,7 @@ import '../../../domain/entities/od_request.dart';
 import '../../../domain/enums/od_status.dart';
 import '../../../domain/enums/user_role.dart';
 import '../../../widgets/role_notifications_panel.dart';
+import '../../../widgets/notification_bell.dart';
 import '../../app/app_providers.dart';
 
 class StudentOdSubmitScreen extends ConsumerStatefulWidget {
@@ -24,6 +25,8 @@ class _StudentOdSubmitScreenState extends ConsumerState<StudentOdSubmitScreen> {
   DateTime? _start;
   DateTime? _end;
   bool _multiDay = false;
+  TimeOfDay? _startTime;
+  TimeOfDay? _endTime;
   bool _submitting = false;
 
   @override
@@ -54,6 +57,25 @@ class _StudentOdSubmitScreenState extends ConsumerState<StudentOdSubmitScreen> {
     });
   }
 
+  Future<void> _pickTime({required bool start}) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: const TimeOfDay(hour: 8, minute: 0),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+        child: child!,
+      ),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (start) {
+        _startTime = picked;
+      } else {
+        _endTime = picked;
+      }
+    });
+  }
+
   Future<void> _submit() async {
     final user = ref.read(authStateProvider).asData?.value;
     if (user == null) return;
@@ -62,14 +84,50 @@ class _StudentOdSubmitScreenState extends ConsumerState<StudentOdSubmitScreen> {
           .showSnackBar(const SnackBar(content: Text('Select start and end date')));
       return;
     }
+    // Validation
+    final now = DateTime.now();
+    if (_start!.isBefore(DateTime(now.year, now.month, now.day))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot apply for past dates.')),
+      );
+      return;
+    }
+    if (!_multiDay) {
+      if (_startTime == null || _endTime == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Select start and end time.')),
+        );
+        return;
+      }
+      final startMinutes = _startTime!.hour * 60 + _startTime!.minute;
+      final endMinutes = _endTime!.hour * 60 + _endTime!.minute;
+      if (startMinutes < 8 * 60 || endMinutes > 17 * 60) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Allowed time: 8:00 AM to 5:00 PM')), 
+        );
+        return;
+      }
+      if (endMinutes <= startMinutes) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('End time must be after start time.')),
+        );
+        return;
+      }
+    }
+    final startDateTime = _multiDay
+        ? DateTime(_start!.year, _start!.month, _start!.day, 8, 0)
+        : DateTime(_start!.year, _start!.month, _start!.day, _startTime?.hour ?? 8, _startTime?.minute ?? 0);
+    final endDateTime = _multiDay
+        ? DateTime(_end!.year, _end!.month, _end!.day, 17, 0)
+        : DateTime(_end!.year, _end!.month, _end!.day, _endTime?.hour ?? 17, _endTime?.minute ?? 0);
     final request = OdRequest(
       id: 'od_${DateTime.now().millisecondsSinceEpoch}',
       studentId: user.id,
       eventName: _eventCtrl.text.trim(),
       organizer: _organizerCtrl.text.trim(),
       venue: _venueCtrl.text.trim(),
-      startDateTime: _start!,
-      endDateTime: _end!,
+      startDateTime: startDateTime,
+      endDateTime: endDateTime,
       isMultiDay: _multiDay,
       reason: _reasonCtrl.text.trim(),
       status: OdStatus.pending,
@@ -108,6 +166,7 @@ class _StudentOdSubmitScreenState extends ConsumerState<StudentOdSubmitScreen> {
           dedupeKey: '${request.id}_student_submitted_mentor',
         );
 
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('OD submitted')),
     );
@@ -124,6 +183,7 @@ class _StudentOdSubmitScreenState extends ConsumerState<StudentOdSubmitScreen> {
       appBar: AppBar(
         title: const Text('Student OD'),
         actions: [
+          const NotificationBell(),
           IconButton(
             tooltip: 'Profile',
             onPressed: () => context.go('/profile'),
@@ -140,7 +200,15 @@ class _StudentOdSubmitScreenState extends ConsumerState<StudentOdSubmitScreen> {
                 CheckboxListTile(
                   title: const Text('Multi-day OD'),
                   value: _multiDay,
-                  onChanged: (value) => setState(() => _multiDay = value ?? false),
+                  onChanged: (value) {
+                    setState(() {
+                      _multiDay = value ?? false;
+                      if (_multiDay) {
+                        _startTime = null;
+                        _endTime = null;
+                      }
+                    });
+                  },
                 ),
                 TextField(
                   controller: _eventCtrl,
@@ -180,6 +248,30 @@ class _StudentOdSubmitScreenState extends ConsumerState<StudentOdSubmitScreen> {
                     ),
                   ],
                 ),
+                if (!_multiDay) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _pickTime(start: true),
+                          child: Text(_startTime == null
+                              ? 'Start time'
+                              : _startTime!.format(context)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _pickTime(start: false),
+                          child: Text(_endTime == null
+                              ? 'End time'
+                              : _endTime!.format(context)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 FilledButton(
                   onPressed: _submitting ? null : _submit,
