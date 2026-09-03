@@ -17,4 +17,19 @@ class LoginIdentifierNormalizer {
 
     return value;
   }
+
+  static String displayNameFromEmail(String email) {
+    final localPart = email.trim().toLowerCase().split('@').first;
+    final namePart = localPart.split(RegExp(r'[._-]')).first;
+    final lettersOnly = namePart.replaceAll(RegExp(r'[^a-z]'), '');
+    if (lettersOnly.isEmpty) return 'User';
+    return '${lettersOnly[0].toUpperCase()}${lettersOnly.substring(1)}';
+  }
+
+  static String departmentFromEmail(String email) {
+    final domain = email.trim().toLowerCase().split('@').skip(1).join('@');
+    final parts = domain.split('.');
+    if (parts.contains('cse')) return 'CSE';
+    return '';
+  }
 }

@@ -62,20 +62,22 @@ class FirebaseAuthRepository implements AuthRepository {
   }
 
   Future<AppUser?> _resolveUserProfile(User? firebaseUser) async {
-    if (firebaseUser == null) return null;
+    if (firebaseUser == null || firebaseUser.isAnonymous) return null;
 
     final profileSnap =
         await _firestore.collection(FirestorePaths.users).doc(firebaseUser.uid).get();
     if (!profileSnap.exists) {
+      final email = firebaseUser.email ?? '';
       return AppUser(
         id: firebaseUser.uid,
-        email: firebaseUser.email ?? '',
-        fullName: firebaseUser.displayName ?? 'User',
+        email: email,
+        fullName: firebaseUser.displayName ??
+            LoginIdentifierNormalizer.displayNameFromEmail(email),
         role: UserRole.student,
         regNo: null,
         staffId: null,
         phone: null,
-        department: '',
+        department: LoginIdentifierNormalizer.departmentFromEmail(email),
         className: null,
         photoUrl: firebaseUser.photoURL,
         createdAt: DateTime.now(),
@@ -85,15 +87,25 @@ class FirebaseAuthRepository implements AuthRepository {
       );
     }
     final data = profileSnap.data() ?? <String, dynamic>{};
+    final storedName = data['full_name'] as String?;
+    final email = firebaseUser.email ?? '';
+    final fallbackName = LoginIdentifierNormalizer.displayNameFromEmail(email);
+    final storedDepartment = data['department'] as String?;
     return AppUser(
       id: firebaseUser.uid,
-      email: data['email'] as String? ?? firebaseUser.email ?? '',
-      fullName: data['full_name'] as String? ?? firebaseUser.displayName ?? 'User',
+      email: data['email'] as String? ?? email,
+      fullName: storedName != null &&
+              storedName.trim().isNotEmpty &&
+              storedName.trim().toLowerCase() != 'student'
+          ? storedName
+          : firebaseUser.displayName ?? fallbackName,
       role: UserRoleX.fromValue(data['role'] as String? ?? 'student'),
       regNo: data['reg_no'] as String?,
       staffId: data['staff_id'] as String?,
       phone: data['phone'] as String?,
-      department: data['department'] as String? ?? '',
+        department: storedDepartment != null && storedDepartment.trim().isNotEmpty
+          ? storedDepartment
+          : LoginIdentifierNormalizer.departmentFromEmail(email),
       className: data['class_name'] as String?,
       section: data['section'] as String?,
       classAdvisorId: data['class_advisor_id'] as String?,

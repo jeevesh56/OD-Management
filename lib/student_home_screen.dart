@@ -5,11 +5,13 @@
 import 'dart:html' as html;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'api_service.dart';
 import 'domain/rules/od_rule_engine.dart';
+import 'data/services/login_identifier_normalizer.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
 import 'widgets/portal_od_helpers.dart';
@@ -119,8 +121,9 @@ class _StudentSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = 'Student';
-    final dept = 'Department';
+    final email = FirebaseAuth.instance.currentUser?.email ?? '';
+    final name = LoginIdentifierNormalizer.displayNameFromEmail(email);
+    final dept = LoginIdentifierNormalizer.departmentFromEmail(email);
 
     return Container(
       color: kStudentSidebar,
@@ -287,7 +290,9 @@ class _StudentTopbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = 'Student';
+    final name = LoginIdentifierNormalizer.displayNameFromEmail(
+      FirebaseAuth.instance.currentUser?.email ?? '',
+    );
     final scheme = Theme.of(context).colorScheme;
 
     return Container(
@@ -319,15 +324,19 @@ class _StudentTopbar extends StatelessWidget {
               foregroundColor: kStudentPrimary,
               child: Text(name.substring(0, 1).toUpperCase()),
             ),
-            onSelected: (value) {
+            onSelected: (value) async {
               if (value == "timetable") {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const TimetablePage()),
                 );
               } else if (value == "logout") {
-                Navigator.of(context).pushReplacement(
+                await FirebaseAuth.instance.signOut();
+                AuthStore.clear();
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const ODLoginUI()),
+                  (_) => false,
                 );
               }
               // Add more actions as needed
@@ -378,9 +387,11 @@ class _DashboardState extends State<_Dashboard> {
       }
       final data = reqRes.data;
       if (data is! List) return const [];
+        final studentId = FirebaseAuth.instance.currentUser?.uid ?? '';
       return data
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
+          .where((request) => request['student_id']?.toString() == studentId)
           .toList();
     } catch (_) {
       return const [];
@@ -455,7 +466,8 @@ class _DashboardState extends State<_Dashboard> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final name = 'Student';
+    final email = FirebaseAuth.instance.currentUser?.email ?? '';
+    final name = LoginIdentifierNormalizer.displayNameFromEmail(email);
     final sp = {};
     final section =
         sp['section']?.toString() ??
@@ -503,9 +515,11 @@ class _DashboardState extends State<_Dashboard> {
                           var rejected = 0;
                           for (final x in requests) {
                             final s = x['status']?.toString() ?? '';
-                            if (s == 'Approved') {
+                            if (s.toLowerCase() == 'approved' ||
+                                s.toLowerCase() == 'principal_approved') {
                               approved++;
-                            } else if (s == 'Rejected') {
+                            } else if (s.toLowerCase() == 'rejected' ||
+                                s.toLowerCase().endsWith('_rejected')) {
                               rejected++;
                             }
                           }
@@ -913,6 +927,10 @@ class _NewODPageState extends State<_NewODPage> {
     }
 
     try {
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      final emailName = LoginIdentifierNormalizer.displayNameFromEmail(
+        firebaseUser?.email ?? '',
+      );
       await FirebaseFirestore.instance.collection('od_requests').add({
         'event_name': eventNameController.text.trim(),
         'datetime': selectedDateTime!.toIso8601String(),
@@ -933,15 +951,17 @@ class _NewODPageState extends State<_NewODPage> {
         'is_pinned': false,
         'expired': false,
         'created_at': FieldValue.serverTimestamp(),
-        'student_name': 'Student',
-        'student_id': '',
+        'updated_at': FieldValue.serverTimestamp(),
+        'student_name': emailName,
+        'student_id': firebaseUser?.uid ?? '',
+        'current_approver_role': 'mentor',
       });
       await FirebaseFirestore.instance.collection('notifications').add({
-        'user_role': 'mentor',
+        'role': 'mentor',
         'title': 'New OD Request',
         'message': 'A student submitted OD request',
         'seen': false,
-        'timestamp': FieldValue.serverTimestamp(),
+        'created_at': FieldValue.serverTimestamp(),
       });
       debugPrint('OD stored successfully');
 
@@ -1546,16 +1566,41 @@ class _ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = 'Student';
-    final sp = {};
-    final initials = name
-        .split(' ')
-        .take(2)
-        .map((w) => w.isNotEmpty ? w[0] : '')
-        .join()
-        .toUpperCase();
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    final profileFuture = firebaseUser == null
+        ? Future<DocumentSnapshot<Map<String, dynamic>>>.value(
+            FirebaseFirestore.instance.collection('users').doc('').get(),
+          )
+        : FirebaseFirestore.instance
+            .collection('users')
+            .doc(firebaseUser.uid)
+            .get();
 
-    return Stack(
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: profileFuture,
+      builder: (context, snapshot) {
+        final sp = snapshot.data?.data() ?? <String, dynamic>{};
+        final emailName = LoginIdentifierNormalizer.displayNameFromEmail(
+          firebaseUser?.email ?? '',
+        );
+        final storedName = (sp['full_name'] ?? sp['name'] ?? '').toString().trim();
+        final name = storedName.isNotEmpty
+                && storedName.toLowerCase() != 'student'
+            ? storedName
+            : emailName;
+        final initials = name
+            .split(' ')
+            .take(2)
+            .map((w) => w.isNotEmpty ? w[0] : '')
+            .join()
+            .toUpperCase();
+        final registerNumber = (sp['register_number'] ??
+                sp['reg_no'] ??
+                sp['regNo'] ??
+                '')
+            .toString();
+
+        return Stack(
       fit: StackFit.expand,
       children: [
         const PortalDecoratedBackground(bottomCircleOffset: 90),
@@ -1595,7 +1640,7 @@ class _ProfilePage extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      sp['register_number'] ?? '',
+                      registerNumber,
                       style: TextStyle(color: Colors.grey.shade700),
                     ),
                   ],
@@ -1603,10 +1648,18 @@ class _ProfilePage extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               _infoCard(context, [
-                ('Department', sp['department'] ?? '—'),
-                ('Section', sp['section'] ?? '—'),
-                ('Semester', sp['semester']?.toString() ?? '—'),
-                ('Batch', sp['batch']?.toString() ?? '—'),
+                (
+                  'Department',
+                  _profileValue(
+                    sp['department'] ??
+                        LoginIdentifierNormalizer.departmentFromEmail(
+                          firebaseUser?.email ?? '',
+                        ),
+                  ),
+                ),
+                ('Section', _profileValue(sp['section'])),
+                ('Semester', _profileValue(sp['semester'])),
+                ('Batch', _profileValue(sp['batch'])),
                 (
                   'Attendance',
                   sp['attendance_percent'] != null
@@ -1631,11 +1684,13 @@ class _ProfilePage extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  onPressed: () {
-                    // Clear user session (legacy AuthStore removed)
-                    Navigator.pushReplacement(
-                      context,
+                  onPressed: () async {
+                    await FirebaseAuth.instance.signOut();
+                    AuthStore.clear();
+                    if (!context.mounted) return;
+                    Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute(builder: (_) => const ODLoginUI()),
+                      (_) => false,
                     );
                   },
                 ),
@@ -1644,7 +1699,14 @@ class _ProfilePage extends StatelessWidget {
           ),
         ),
       ],
+        );
+      },
     );
+  }
+
+  String _profileValue(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? '—' : text;
   }
 
   Widget _infoCard(

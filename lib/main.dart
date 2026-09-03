@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,15 +46,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await initFCM();
-  await FirebaseFirestore.instance.collection('test').add({
-    'msg': 'Firebase connected',
-  });
   runApp(ProviderScope(child: const MyApp()));
 }
 
 class ThemeController {
   static final ValueNotifier<ThemeMode> mode = ValueNotifier<ThemeMode>(
-    ThemeMode.system,
+    ThemeMode.light,
   );
 
   static void toggle() {

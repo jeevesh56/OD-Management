@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../data/services/login_identifier_normalizer.dart';
 
 class ODRegisterScreen extends StatefulWidget {
   const ODRegisterScreen({super.key});
@@ -11,6 +15,7 @@ class ODRegisterScreen extends StatefulWidget {
 class _ODRegisterScreenState extends State<ODRegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _registering = false;
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -175,37 +180,23 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                           ),
-                          onPressed: () {
-                            if (_passwordController.text !=
-                                _confirmPasswordController.text) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text("Passwords do not match."),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                              return;
-                            }
-                            if (!_isValidPassword) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Password must be 8 characters (letters and numbers only)",
+                          onPressed: _registering ? null : _register,
+                          child: _registering
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
                                   ),
-                                  backgroundColor: Colors.red,
+                                )
+                              : const Text(
+                                  "Register",
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              );
-                              return;
-                            }
-                            Navigator.pop(context, _displayName);
-                          },
-                          child: const Text(
-                            "Register",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
                         ),
                       ),
                       const Spacer(flex: 1),
@@ -217,6 +208,61 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _register() async {
+    if (_passwordController.text != _confirmPasswordController.text) {
+      _showError('Passwords do not match.');
+      return;
+    }
+    if (!_isValidPassword) {
+      _showError('Password must be 8 characters (letters and numbers only)');
+      return;
+    }
+
+    final email = _emailController.text.trim().toLowerCase();
+    final fullName = _fullNameController.text.trim();
+    if (fullName.isEmpty || !email.contains('@')) {
+      _showError('Enter your full name and a valid email.');
+      return;
+    }
+
+    setState(() => _registering = true);
+    try {
+      final credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+            email: email,
+            password: _passwordController.text,
+          );
+      final user = credential.user;
+      if (user == null) throw StateError('Account creation failed.');
+
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'email': email,
+        'full_name': fullName,
+        'role': 'student',
+        'department': LoginIdentifierNormalizer.departmentFromEmail(email),
+        'is_active': true,
+        'requires_password_change': false,
+        'created_at': FieldValue.serverTimestamp(),
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      Navigator.pop(context, _displayName);
+    } on FirebaseAuthException catch (error) {
+      _showError(error.message ?? 'Unable to create account.');
+    } catch (error) {
+      _showError(error.toString());
+    } finally {
+      if (mounted) setState(() => _registering = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
@@ -235,6 +281,7 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
       child: TextField(
         controller: controller,
         obscureText: obscure,
+        cursorColor: Colors.white,
         autofillHints: hint.toLowerCase().contains('confirm')
             ? const [AutofillHints.newPassword]
             : const [AutofillHints.newPassword, AutofillHints.password],
@@ -242,8 +289,8 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
           FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
           LengthLimitingTextInputFormatter(_passwordLength),
         ],
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.98),
+        style: const TextStyle(
+          color: Colors.white,
           fontSize: 14,
         ),
         decoration: InputDecoration(
@@ -254,7 +301,7 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
           ),
           prefixIcon: const Icon(Icons.lock_outline, color: Colors.white70, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white70, fontSize: 14),
+          hintStyle: const TextStyle(color: Colors.white, fontSize: 14),
           suffixIcon: IconButton(
             icon: Icon(
               obscure ? Icons.visibility_off : Icons.visibility,
@@ -283,14 +330,15 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
       child: TextField(
         controller: controller,
         obscureText: obscureText,
+        cursorColor: Colors.white,
         autofillHints: hint == "Full Name"
             ? const [AutofillHints.name]
             : const [AutofillHints.username, AutofillHints.email],
         keyboardType: hint == "College Email"
             ? TextInputType.emailAddress
             : TextInputType.text,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.98),
+        style: const TextStyle(
+          color: Colors.white,
           fontSize: 14,
         ),
         decoration: InputDecoration(
@@ -301,7 +349,7 @@ class _ODRegisterScreenState extends State<ODRegisterScreen> {
           ),
           prefixIcon: Icon(icon, color: Colors.white70, size: 20),
           hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white70, fontSize: 14),
+          hintStyle: const TextStyle(color: Colors.white, fontSize: 14),
         ),
       ),
     );

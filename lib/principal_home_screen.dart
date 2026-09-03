@@ -104,11 +104,12 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   }
 
   Future<void> _logout() async {
-    // Clear user session (legacy AuthStore removed)
+    AuthStore.clear();
     if (!mounted) return;
-    Navigator.pushReplacement(
+    Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const ODLoginUI()),
+      (_) => false,
     );
   }
 

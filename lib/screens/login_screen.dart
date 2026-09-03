@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-import '../student_home_screen.dart';
-import '../mentor_home_screen.dart';
 import '../hod_home_screen.dart';
+import '../mentor_home_screen.dart';
 import '../principal_home_screen.dart';
+import '../api_service.dart';
+import '../data/services/login_identifier_normalizer.dart';
 import 'register_screen.dart';
 
 class ODLoginUI extends StatefulWidget {
@@ -198,7 +198,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
     );
   }
 
-  void _onContinue() {
+  Future<void> _onContinue() async {
     if (_loginType == 'mentor') {
       if (!_isValidRoleEmail) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -211,12 +211,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         );
         return;
       }
-      // Legacy AuthStore.applyMentorLogin removed
-      _registerFcmForCurrentUser('mentor');
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const MentorHomeScreen()),
-      );
+      await _openRole('mentor', const MentorHomeScreen());
       return;
     } else if (_loginType == 'principal') {
       if (!_isValidRoleEmail) {
@@ -230,12 +225,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         );
         return;
       }
-      // Legacy AuthStore.applyPrincipalLogin removed
-      _registerFcmForCurrentUser('principal');
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const PrincipalHomeScreen()),
-      );
+      await _openRole('principal', const PrincipalHomeScreen());
       return;
     } else if (_loginType == 'hod') {
       if (!_isValidRoleEmail) {
@@ -249,12 +239,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         );
         return;
       }
-      // Legacy AuthStore.applyHodLogin removed
-      _registerFcmForCurrentUser('hod');
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HoDHomeScreen()),
-      );
+      await _openRole('hod', const HoDHomeScreen());
       return;
     }
     if (!_isValidStudentEmail) {
@@ -268,25 +253,61 @@ class _ODLoginUIState extends State<ODLoginUI> {
       );
       return;
     }
-    // Legacy AuthStore.applyStudentLogin removed
-    _registerFcmForCurrentUser('student');
+    await _signIn();
+  }
+
+  Future<void> _openRole(String role, Widget screen) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null || !currentUser.isAnonymous) {
+        await FirebaseAuth.instance.signInAnonymously();
+      }
+    } on FirebaseAuthException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message ?? 'Unable to open role page')),
+        );
+      }
+      return;
+    }
+    AuthStore.role = role;
+    if (!mounted) return;
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const StudentHomeScreen()),
+      MaterialPageRoute(builder: (_) => screen),
     );
   }
 
-  Future<void> _registerFcmForCurrentUser(String role) async {
-    final userId = _emailController.text.trim();
-    if (userId.isEmpty) return;
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token == null || token.isEmpty) return;
-    await FirebaseFirestore.instance.collection('users').doc(userId).set({
-      'fcm_token': token,
-      'role': role,
-      'user_id': userId,
-      'updated_at': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+  Future<void> _signIn() async {
+    final enteredId = _emailController.text.trim();
+    final emailCandidates = enteredId.contains('@')
+        ? <String>[LoginIdentifierNormalizer.toEmail(enteredId)]
+        : <String>[
+            '$enteredId@staff.ritchennai.edu.in',
+            '$enteredId@department.ritchennai.edu.in',
+            '$enteredId@cse.ritchennai.edu.in',
+          ];
+    FirebaseAuthException? lastError;
+          for (final email in emailCandidates) {
+            try {
+              await FirebaseAuth.instance.signInWithEmailAndPassword(
+                email: email,
+                password: _passwordController.text,
+              );
+              return;
+            } on FirebaseAuthException catch (error) {
+              lastError = error;
+      }
+    }
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                lastError?.message ??
+                    'Unable to sign in. Check the role email and password.',
+              ),
+            ),
+          );
   }
 
   Widget _loginTypeToggle() {
@@ -322,6 +343,9 @@ class _ODLoginUIState extends State<ODLoginUI> {
       onTap: () {
         setState(() {
           _loginType = value;
+          _emailController.clear();
+          _passwordController.clear();
+          _welcomeUsername = null;
         });
       },
       child: AnimatedContainer(

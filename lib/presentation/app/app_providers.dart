@@ -27,13 +27,13 @@ import '../../domain/enums/user_role.dart';
 import '../../domain/repositories/approval_repository.dart';
 import '../../domain/repositories/od_request_repository.dart';
 import '../../domain/repositories/user_repository.dart';
+import '../../student_home_screen.dart';
 import '../../screens/login_screen.dart';
 import '../screens/auth/change_password_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/profile/edit_profile_screen.dart';
 import '../screens/qr/qr_scan_screen.dart';
 import '../screens/workflow/reviewer_queue_screen.dart';
-import '../screens/workflow/student_od_submit_screen.dart';
 import '../screens/notifications/notification_center_screen.dart';
 
 final firebaseAuthProvider = Provider<FirebaseAuth>((ref) {
@@ -144,7 +144,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/home/student',
-        builder: (context, state) => const StudentOdSubmitScreen(),
+        builder: (context, state) => const StudentHomeScreen(),
       ),
       GoRoute(
         path: '/home/mentor',
