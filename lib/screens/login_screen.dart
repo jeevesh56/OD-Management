@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../hod_home_screen.dart';
 import '../mentor_home_screen.dart';
 import '../principal_home_screen.dart';
+import '../student_home_screen.dart';
 import '../api_service.dart';
 import '../data/services/login_identifier_normalizer.dart';
 import '../theme/app_theme.dart';
@@ -343,6 +344,11 @@ class _ODLoginUIState extends State<ODLoginUI> {
         await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email,
           password: _passwordController.text,
+        );
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const StudentHomeScreen()),
         );
         return;
       } on FirebaseAuthException catch (error) {

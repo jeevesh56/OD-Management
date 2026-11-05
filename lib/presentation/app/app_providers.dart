@@ -208,7 +208,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/change-password';
       }
 
-      if (!user.requiresPasswordChange && (isLoggingIn || isChangingPassword)) {
+      if (!user.requiresPasswordChange &&
+          isChangingPassword) {
         return _homeRouteForRole(user.role.value);
       }
 

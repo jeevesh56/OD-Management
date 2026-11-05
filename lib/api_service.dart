@@ -189,8 +189,8 @@ class _FirestoreApi {
         : user == null
         ? <String, dynamic>{}
         : (await _db.collection(FirestorePaths.users).doc(user.uid).get())
-              .data() ??
-          <String, dynamic>{};
+                  .data() ??
+              <String, dynamic>{};
     if (loginEmail.isNotEmpty) {
       final users = _db.collection(FirestorePaths.users);
       if (profile.isEmpty) {
@@ -466,7 +466,7 @@ bool _reachedStage(Map<String, dynamic> request, {required String role}) {
       history.any((entry) => entry is Map && _historyRole(entry) == role);
   if (hasAction) return true;
   if (_effectiveApproverRole(request) == role) return true;
-  final rejectedBy = request['rejected_by_role']?.toString().toLowerCase();
+  final rejectedBy = _rejectionRole(request);
   if (_isRejectedStatus(request['status']) &&
       rejectedBy != null &&
       _workflowRoleOrder(role) <= _workflowRoleOrder(rejectedBy)) {
@@ -489,6 +489,32 @@ bool _reachedStage(Map<String, dynamic> request, {required String role}) {
                   'principal'),
     _ => false,
   };
+}
+
+String? _rejectionRole(Map<String, dynamic> request) {
+  final stored = request['rejected_by_role']?.toString().trim().toLowerCase();
+  if (stored != null && stored.isNotEmpty) {
+    return _normalizeWorkflowRole(stored);
+  }
+  final history = request['workflow_history'];
+  if (history is! List) return null;
+  for (final entry in history.reversed) {
+    if (entry is! Map || _historyDecision(entry) != false) continue;
+    final role = _historyRole(entry);
+    if (role == 'mentor' || role == 'hod' || role == 'principal') {
+      return role;
+    }
+  }
+  return null;
+}
+
+String _normalizeWorkflowRole(String role) {
+  if (role == 'head' ||
+      role == 'head_of_department' ||
+      role == 'head_department') {
+    return 'hod';
+  }
+  return role;
 }
 
 int _workflowRoleOrder(String role) {
