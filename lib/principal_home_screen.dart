@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'api_service.dart';
@@ -31,7 +32,7 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   List<Map<String, dynamic>> _queue = [];
   List<Map<String, dynamic>> _allRequests = [];
   final Set<String> _selectedIds = <String>{};
-  Timer? _timer;
+  StreamSubscription<RoleRequestSnapshot>? _requestsSubscription;
 
   List<Map<String, dynamic>> _mapList(dynamic data) {
     if (data is! List) return const [];
@@ -45,16 +46,30 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   void initState() {
     super.initState();
     _loadQueue();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (mounted && !_busy) {
-        _loadQueue(silent: true);
-      }
+    _requestsSubscription = PrincipalApi.watchData().listen((snapshot) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = null;
+        _queue = snapshot.queue;
+        _allRequests = snapshot.history;
+        final visibleIds = _queue
+            .map((item) => item['id']?.toString() ?? '')
+            .toSet();
+        _selectedIds.removeWhere((id) => !visibleIds.contains(id));
+      });
+    }, onError: (Object error, StackTrace stackTrace) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _error = 'Unable to load Principal data: $error';
+      });
     });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _requestsSubscription?.cancel();
     super.dispose();
   }
 
@@ -104,6 +119,7 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   }
 
   Future<void> _logout() async {
+    await FirebaseAuth.instance.signOut();
     AuthStore.clear();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
@@ -114,11 +130,16 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   }
 
   Future<void> _approve(Map<String, dynamic> row) async {
-    await PrincipalApi.action(
+    final result = await PrincipalApi.action(
       requestId: row['id'].toString(),
       action: 'APPROVED',
       reason: 'Approved by Principal',
     );
+    if (mounted && !result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error ?? 'Approval failed')),
+      );
+    }
     await _loadQueue();
   }
 
@@ -130,11 +151,16 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
     );
     if (reason == null) return;
 
-    await PrincipalApi.action(
+    final result = await PrincipalApi.action(
       requestId: row['id'].toString(),
       action: 'REJECTED',
       reason: reason,
     );
+    if (mounted && !result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error ?? 'Rejection failed')),
+      );
+    }
     await _loadQueue();
   }
 
@@ -180,7 +206,11 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
       drawer: desktop
           ? null
           : Drawer(
-              child: _Sidebar(current: _section, onTap: _onTapSection),
+              child: _Sidebar(
+                current: _section,
+                onTap: _onTapSection,
+                onLogout: _logout,
+              ),
             ),
       body: SafeArea(
         child: Row(
@@ -188,7 +218,11 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
             if (desktop)
               SizedBox(
                 width: 260,
-                child: _Sidebar(current: _section, onTap: _onTapSection),
+                child: _Sidebar(
+                  current: _section,
+                  onTap: _onTapSection,
+                  onLogout: _logout,
+                ),
               ),
             Expanded(
               child: Column(
@@ -248,7 +282,7 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
   Widget _contentBySection() {
     switch (_section) {
       case 0:
-        return _DashboardPanel(queue: _allRequests);
+        return _DashboardPanel(queue: _queue, history: _allRequests);
       case 2:
         return _HistoryPanel(rows: _allRequests);
       case 3:
@@ -268,10 +302,15 @@ class _PrincipalHomeScreenState extends State<PrincipalHomeScreen> {
 }
 
 class _Sidebar extends StatelessWidget {
-  const _Sidebar({required this.current, required this.onTap});
+  const _Sidebar({
+    required this.current,
+    required this.onTap,
+    required this.onLogout,
+  });
 
   final int current;
   final ValueChanged<int> onTap;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -369,6 +408,33 @@ class _Sidebar extends StatelessWidget {
             onTap: () => onTap(3),
           ),
           const Spacer(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: onLogout,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.logout_rounded, color: Colors.white),
+                      SizedBox(width: 12),
+                      Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
           const Padding(
             padding: EdgeInsets.all(16),
             child: Text(
@@ -445,13 +511,14 @@ class _Topbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = 'Principal';
+    final scheme = Theme.of(context).colorScheme;
 
     return Container(
       height: 72,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE3E8F2))),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Row(
         children: [
@@ -482,30 +549,36 @@ class _Topbar extends StatelessWidget {
 }
 
 class _DashboardPanel extends StatelessWidget {
-  const _DashboardPanel({required this.queue});
+  const _DashboardPanel({required this.queue, required this.history});
 
   final List<Map<String, dynamic>> queue;
+  final List<Map<String, dynamic>> history;
 
   @override
   Widget build(BuildContext context) {
     final name = 'Principal';
     final dept = 'Department';
-    final total = queue.length;
-    final approved = queue
+    final scheme = Theme.of(context).colorScheme;
+    final approved = history
         .where(
-          (e) => (e['status']?.toString() ?? '').toLowerCase() == 'approved',
+          (e) => portalWorkflowHasRoleDecision(
+            e,
+            role: 'principal',
+            approved: true,
+          ),
         )
         .length;
-    final rejected = queue
+    final rejected = history
         .where(
-          (e) => (e['status']?.toString() ?? '').toLowerCase() == 'rejected',
+          (e) => portalWorkflowHasRoleDecision(
+            e,
+            role: 'principal',
+            approved: false,
+          ),
         )
         .length;
-    final pending = queue
-        .where(
-          (e) => (e['status']?.toString() ?? '').toLowerCase() == 'pending',
-        )
-        .length;
+    final pending = queue.length;
+    final total = pending + approved + rejected;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,7 +592,7 @@ class _DashboardPanel extends StatelessWidget {
               accentColor: Colors.blue,
             ),
             DashboardStatItem(
-              title: 'Approved',
+              title: 'Accepted',
               value: approved.toString(),
               accentColor: Colors.green,
             ),
@@ -540,13 +613,16 @@ class _DashboardPanel extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE6ECF5)),
+            border: Border.all(color: scheme.outlineVariant),
           ),
-          child: const Text(
+          child: Text(
             'Open OD Requests for full request details, proof verification, and approval actions.',
-            style: TextStyle(fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
@@ -596,6 +672,7 @@ class _ODRequestsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     if (rows.isEmpty) {
       return const _EmptyState(
         icon: Icons.inbox_outlined,
@@ -616,14 +693,14 @@ class _ODRequestsPanel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        ...groupedData.entries.map((entry) {
+        ...groupedData.entries.map<Widget>((entry) {
           final eventName = entry.key;
           final items = entry.value;
           return Container(
             margin: const EdgeInsets.symmetric(vertical: 12),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: scheme.surface,
               borderRadius: BorderRadius.circular(16),
               boxShadow: const [
                 BoxShadow(color: Colors.black12, blurRadius: 6),
@@ -651,7 +728,7 @@ class _ODRequestsPanel extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
-                ...items.map(
+                ...items.map<Widget>(
                   (row) => _ODRequestCard(
                     row: row,
                     selected: selectedIds.contains(row['id']?.toString() ?? ''),
@@ -680,10 +757,8 @@ class _HistoryPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final historyRows = rows.where((r) {
-      final status = (r['status']?.toString() ?? '').toLowerCase();
-      return status == 'approved' || status == 'rejected';
-    }).toList();
+    final scheme = Theme.of(context).colorScheme;
+    final historyRows = rows;
 
     if (historyRows.isEmpty) {
       return const _EmptyState(
@@ -694,22 +769,30 @@ class _HistoryPanel extends StatelessWidget {
     }
 
     return Column(
-      children: historyRows.map((row) {
-        final status = row['status']?.toString() ?? 'Pending';
-        final isApproved = status.toLowerCase() == 'approved';
-        final color = isApproved ? Colors.green : Colors.red;
+      children: historyRows.map<Widget>((row) {
+        final status = portalRoleDecisionDisplay(row, 'principal');
+        final isApproved = status.startsWith('Approved');
+        final color = isApproved
+            ? Colors.green
+            : status.startsWith('Rejected')
+            ? Colors.red
+            : Colors.orange;
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE6ECF5)),
+            border: Border.all(color: scheme.outlineVariant),
           ),
           child: Row(
             children: [
               Icon(
-                isApproved ? Icons.check_circle : Icons.cancel,
+                isApproved
+                    ? Icons.check_circle
+                    : status.startsWith('Rejected')
+                    ? Icons.cancel
+                    : Icons.schedule,
                 color: color,
               ),
               const SizedBox(width: 10),
@@ -723,7 +806,21 @@ class _HistoryPanel extends StatelessWidget {
                     ),
                     Text(
                       portalOdDateTime(row['datetime']),
-                      style: const TextStyle(color: Colors.grey),
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.65),
+                      ),
+                    ),
+                    PortalHistoryRequestDetails(request: row),
+                    ProofActionButtons(
+                      fileUrl: row['file_url']?.toString() ?? '',
+                    ),
+                    Text(
+                      '${status.startsWith('Approved')
+                          ? 'Approved'
+                          : status.startsWith('Rejected')
+                          ? 'Rejected'
+                          : 'Pending'} by ${portalRoleDecisionActor(row, 'principal')}',
+                      style: TextStyle(color: color),
                     ),
                   ],
                 ),
@@ -757,6 +854,7 @@ class _ODRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final eventName = row['event_name']?.toString() ?? 'Untitled event';
     final datetime = portalOdDateTime(row['datetime']);
     final venue = row['venue']?.toString() ?? '---';
@@ -769,7 +867,7 @@ class _ODRequestCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
       ),
@@ -805,15 +903,18 @@ class _ODRequestCard extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE3E8F2)),
-              color: const Color(0xFFFAFCFF),
+              border: Border.all(color: scheme.outlineVariant),
+              color: scheme.surfaceContainerHigh,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Proof',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 ProofActionButtons(fileUrl: fileUrl),
@@ -824,7 +925,7 @@ class _ODRequestCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: scheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -919,17 +1020,18 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6ECF5)),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         children: [
-          Icon(icon, size: 58, color: const Color(0xFF9AAAC4)),
+          Icon(icon, size: 58, color: scheme.onSurface.withValues(alpha: 0.45)),
           const SizedBox(height: 12),
           Text(
             title,
@@ -939,7 +1041,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Color(0xFF66768F)),
+            style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.65)),
           ),
         ],
       ),

@@ -18,6 +18,10 @@ class OdRequestModel extends OdRequest {
     super.proofUrl,
     super.createdAt,
     super.updatedAt,
+    super.currentApproverRole,
+    super.mentorApproved,
+    super.hodApproved,
+    super.principalApproved,
   });
 
   factory OdRequestModel.fromMap(String id, Map<String, dynamic> map) {
@@ -28,18 +32,25 @@ class OdRequestModel extends OdRequest {
       organizer: map['organizer'] as String? ?? '',
       venue: map['venue'] as String? ?? '',
       startDateTime:
-          _toDateTime(map['start_datetime']) ?? _toDateTime(map['datetime']) ?? DateTime.now(),
+          _toDateTime(map['start_datetime']) ??
+          _toDateTime(map['datetime']) ??
+          DateTime.now(),
       endDateTime: _toDateTime(map['end_datetime']) ?? DateTime.now(),
       isMultiDay: map['is_multi_day'] as bool? ?? false,
       reason: map['reason'] as String? ?? '',
       status: OdStatusX.fromValue(map['status'] as String? ?? 'PENDING'),
-      expired: map['expired'] as bool? ??
+      expired:
+          map['expired'] as bool? ??
           OdStatusX.fromValue(map['status'] as String? ?? 'PENDING') ==
               OdStatus.expired,
       isPinned: map['is_pinned'] as bool? ?? false,
       proofUrl: map['proof_url'] as String?,
       createdAt: _toDateTime(map['created_at']),
       updatedAt: _toDateTime(map['updated_at']),
+      currentApproverRole: map['current_approver_role']?.toString(),
+      mentorApproved: map['mentor_approved'] == true,
+      hodApproved: map['hod_approved'] == true,
+      principalApproved: map['principal_approved'] == true,
     );
   }
 
@@ -54,17 +65,20 @@ class OdRequestModel extends OdRequest {
       'end_datetime': endDateTime.toIso8601String(),
       'is_multi_day': isMultiDay,
       'reason': reason,
-      'status': status.value,
+      'status': switch (status) {
+        OdStatus.principalApproved => 'ACCEPTED',
+        OdStatus.mentorRejected ||
+        OdStatus.hodRejected ||
+        OdStatus.principalRejected => 'REJECTED',
+        _ => status.value,
+      },
       'expired': expired || status == OdStatus.expired,
       'is_pinned': isPinned,
-      'mentor_approved':
-          status == OdStatus.mentorApproved ||
-          status == OdStatus.hodApproved ||
-          status == OdStatus.principalApproved,
-      'hod_approved':
-          status == OdStatus.hodApproved || status == OdStatus.principalApproved,
-      'principal_approved': status == OdStatus.principalApproved,
-      'current_approver_role': _currentApproverRole(status),
+      'mentor_approved': mentorApproved,
+      'hod_approved': hodApproved,
+      'principal_approved': principalApproved,
+      'current_approver_role':
+          currentApproverRole ?? _currentApproverRole(status),
       'proof_url': proofUrl,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),

@@ -27,6 +27,10 @@ class FirestoreOdRequestRepository implements OdRequestRepository {
       proofUrl: request.proofUrl,
       createdAt: request.createdAt ?? DateTime.now(),
       updatedAt: request.updatedAt ?? DateTime.now(),
+      currentApproverRole: request.currentApproverRole,
+      mentorApproved: request.mentorApproved,
+      hodApproved: request.hodApproved,
+      principalApproved: request.principalApproved,
     );
     await _store.set(
       collection: FirestorePaths.odRequests,
@@ -38,8 +42,10 @@ class FirestoreOdRequestRepository implements OdRequestRepository {
 
   @override
   Future<OdRequest?> getById(String requestId) async {
-    final data =
-        await _store.get(collection: FirestorePaths.odRequests, id: requestId);
+    final data = await _store.get(
+      collection: FirestorePaths.odRequests,
+      id: requestId,
+    );
     if (data == null) return null;
     return OdRequestModel.fromMap(requestId, data);
   }
@@ -48,7 +54,10 @@ class FirestoreOdRequestRepository implements OdRequestRepository {
   Stream<OdRequest?> watchById(String requestId) {
     return _store
         .watchDocument(collection: FirestorePaths.odRequests, id: requestId)
-        .map((data) => data == null ? null : OdRequestModel.fromMap(requestId, data));
+        .map(
+          (data) =>
+              data == null ? null : OdRequestModel.fromMap(requestId, data),
+        );
   }
 
   @override
@@ -73,7 +82,10 @@ class FirestoreOdRequestRepository implements OdRequestRepository {
         )
         .map(
           (rows) => rows
-              .map((row) => OdRequestModel.fromMap(row['id'] as String? ?? '', row))
+              .map(
+                (row) =>
+                    OdRequestModel.fromMap(row['id'] as String? ?? '', row),
+              )
               .toList(),
         );
   }
@@ -100,7 +112,10 @@ class FirestoreOdRequestRepository implements OdRequestRepository {
         )
         .map(
           (rows) => rows
-              .map((row) => OdRequestModel.fromMap(row['id'] as String? ?? '', row))
+              .map(
+                (row) =>
+                    OdRequestModel.fromMap(row['id'] as String? ?? '', row),
+              )
               .toList(),
         );
   }
@@ -123,6 +138,10 @@ class FirestoreOdRequestRepository implements OdRequestRepository {
       proofUrl: request.proofUrl,
       createdAt: request.createdAt,
       updatedAt: DateTime.now(),
+      currentApproverRole: request.currentApproverRole,
+      mentorApproved: request.mentorApproved,
+      hodApproved: request.hodApproved,
+      principalApproved: request.principalApproved,
     );
     await _store.set(
       collection: FirestorePaths.odRequests,

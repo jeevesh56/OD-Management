@@ -35,8 +35,13 @@ class PortalRequestCard extends StatelessWidget {
     final hodDone = r['hod_approved'] == true || status == 'HOD_APPROVED';
     final hodRejected = status == 'HOD_REJECTED';
     final principalDone =
-        r['principal_approved'] == true || status == 'Approved';
-    final principalRejected = status == 'Rejected';
+        r['principal_approved'] == true ||
+        status == 'Approved' ||
+        status == 'ACCEPTED';
+    final principalRejected =
+        status == 'Rejected' ||
+        status == 'REJECTED' ||
+        status == 'PRINCIPAL_REJECTED';
 
     final List<Widget> timeline = [];
     if (submitted != '—') {

@@ -17,6 +17,10 @@ class OdRequest {
     this.proofUrl,
     this.createdAt,
     this.updatedAt,
+    this.currentApproverRole,
+    this.mentorApproved = false,
+    this.hodApproved = false,
+    this.principalApproved = false,
   });
 
   final String id;
@@ -34,4 +38,8 @@ class OdRequest {
   final bool isPinned;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final String? currentApproverRole;
+  final bool mentorApproved;
+  final bool hodApproved;
+  final bool principalApproved;
 }

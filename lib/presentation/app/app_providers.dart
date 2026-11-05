@@ -97,7 +97,10 @@ final notificationServiceProvider = Provider<NotificationService>((ref) {
 final requestLifecycleServiceProvider = Provider<RequestLifecycleService>((
   ref,
 ) {
-  return RequestLifecycleService(ref.watch(firestoreProvider));
+  return RequestLifecycleService(
+    ref.watch(firestoreProvider),
+    ref.watch(firebaseAuthProvider),
+  );
 });
 
 final userProfileServiceProvider = Provider<UserProfileService>((ref) {

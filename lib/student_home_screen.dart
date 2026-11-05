@@ -1,11 +1,9 @@
-// ignore_for_file: avoid_web_libraries_in_flutter
-// dart:html only available on web build — used for file picker
-// ignore: uri_does_not_exist
-// ignore: deprecated_member_use
-import 'dart:html' as html;
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -36,6 +34,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   int _tab = 0;
   int _dashboardReloadToken = 0;
 
+  Future<void> _logout() async {
+    await FirebaseAuth.instance.signOut();
+    AuthStore.clear();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const ODLoginUI()),
+      (_) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final desktop = MediaQuery.of(context).size.width >= 1024;
@@ -47,7 +55,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       drawer: desktop
           ? null
           : Drawer(
-              child: _StudentSidebar(current: _tab, onTap: _onSelectTab),
+              child: _StudentSidebar(
+                current: _tab,
+                onTap: _onSelectTab,
+                onLogout: _logout,
+              ),
             ),
       body: SafeArea(
         child: Row(
@@ -55,7 +67,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             if (desktop)
               SizedBox(
                 width: 260,
-                child: _StudentSidebar(current: _tab, onTap: _onSelectTab),
+                child: _StudentSidebar(
+                  current: _tab,
+                  onTap: _onSelectTab,
+                  onLogout: _logout,
+                ),
               ),
             Expanded(
               child: Column(
@@ -114,10 +130,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 }
 
 class _StudentSidebar extends StatelessWidget {
-  const _StudentSidebar({required this.current, required this.onTap});
+  const _StudentSidebar({
+    required this.current,
+    required this.onTap,
+    required this.onLogout,
+  });
 
   final int current;
   final ValueChanged<int> onTap;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -215,6 +236,33 @@ class _StudentSidebar extends StatelessWidget {
             onTap: () => onTap(3),
           ),
           const Spacer(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: onLogout,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.logout_rounded, color: Colors.white),
+                      SizedBox(width: 12),
+                      Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
           const Padding(
             padding: EdgeInsets.all(16),
             child: Text(
@@ -318,7 +366,9 @@ class _StudentTopbar extends StatelessWidget {
           PopupMenuButton<String>(
             tooltip: 'Profile Menu',
             offset: const Offset(0, 48),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             icon: CircleAvatar(
               backgroundColor: kStudentPrimary.withValues(alpha: 0.1),
               foregroundColor: kStudentPrimary,
@@ -370,13 +420,23 @@ class _Dashboard extends StatefulWidget {
 class _DashboardState extends State<_Dashboard> {
   late Future<List<Map<String, dynamic>>> _futureRequests;
   Map? _activeSession;
-  String? _resubmittingId;
+  StreamSubscription<List<Map<String, dynamic>>>? _requestsSubscription;
 
   @override
   void initState() {
     super.initState();
     _futureRequests = _fetchRequests();
     _loadActiveSession();
+    _requestsSubscription = OdApi.watchMyRequests().listen((requests) {
+      if (!mounted) return;
+      setState(() => _futureRequests = Future.value(requests));
+    });
+  }
+
+  @override
+  void dispose() {
+    _requestsSubscription?.cancel();
+    super.dispose();
   }
 
   Future<List<Map<String, dynamic>>> _fetchRequests() async {
@@ -387,14 +447,14 @@ class _DashboardState extends State<_Dashboard> {
       }
       final data = reqRes.data;
       if (data is! List) return const [];
-        final studentId = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final studentId = FirebaseAuth.instance.currentUser?.uid ?? '';
       return data
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .where((request) => request['student_id']?.toString() == studentId)
           .toList();
-    } catch (_) {
-      return const [];
+    } catch (error) {
+      throw Exception('Failed to load student requests: $error');
     }
   }
 
@@ -408,59 +468,11 @@ class _DashboardState extends State<_Dashboard> {
 
   Future<void> _refreshRequests() async {
     final next = _fetchRequests();
+    if (!mounted) return;
     setState(() {
       _futureRequests = next;
     });
     await next;
-  }
-
-  String _statusValue(Map item) {
-    return (item['status']?.toString() ?? 'Pending').trim().toLowerCase();
-  }
-
-  String _rejectionReason(Map item) {
-    final reason = item['rejection_reason']?.toString().trim();
-    if (reason != null && reason.isNotEmpty) return reason;
-    final review = item['review_note']?.toString().trim();
-    if (review != null && review.isNotEmpty) return review;
-    return 'Details were incomplete or did not meet policy checks.';
-  }
-
-  String _getSuggestion(String reason) {
-    final lower = reason.toLowerCase();
-    if (lower.contains('proof')) {
-      return 'Upload valid proof document.';
-    }
-    if (lower.contains('late')) {
-      return 'Apply before deadline next time.';
-    }
-    if (lower.contains('details')) {
-      return 'Fill all details correctly.';
-    }
-    return 'Check your request and resubmit.';
-  }
-
-  Future<void> _resubmit(Map item) async {
-    final id = item['id']?.toString() ?? '';
-    if (id.isEmpty) return;
-
-    setState(() => _resubmittingId = id);
-    final res = await OdApi.resubmitRequest(item);
-    if (!mounted) return;
-    setState(() => _resubmittingId = null);
-
-    if (!res.ok) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(res.error ?? 'Resubmit failed')));
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Request sent back for review.')),
-    );
-    widget.onCreateNewRequest();
-    await _refreshRequests();
   }
 
   @override
@@ -515,11 +527,9 @@ class _DashboardState extends State<_Dashboard> {
                           var rejected = 0;
                           for (final x in requests) {
                             final s = x['status']?.toString() ?? '';
-                            if (s.toLowerCase() == 'approved' ||
-                                s.toLowerCase() == 'principal_approved') {
+                            if (portalOdStatusIsApproved(s)) {
                               approved++;
-                            } else if (s.toLowerCase() == 'rejected' ||
-                                s.toLowerCase().endsWith('_rejected')) {
+                            } else if (portalOdStatusIsRejected(s)) {
                               rejected++;
                             }
                           }
@@ -616,8 +626,6 @@ class _DashboardState extends State<_Dashboard> {
                                   ),
                                 ),
                               const SizedBox(height: 20),
-                              _buildActionCenter(requests),
-                              const SizedBox(height: 18),
                               _buildRequestsSection(requests),
                             ],
                           );
@@ -636,45 +644,46 @@ class _DashboardState extends State<_Dashboard> {
   Widget _buildStatsRow(int total, int approved, int pending, int rejected) {
     final cards = [
       _buildStatCard('Total', total, Colors.blue),
-      _buildStatCard('Approved', approved, Colors.green),
       _buildStatCard('Pending', pending, Colors.orange),
+      _buildStatCard('Accepted', approved, Colors.green),
       _buildStatCard('Rejected', rejected, Colors.red),
     ];
 
-    final isWide = MediaQuery.of(context).size.width >= 980;
-    if (isWide) {
-      return Row(
-        children: [
-          Expanded(child: cards[0]),
-          const SizedBox(width: 12),
-          Expanded(child: cards[1]),
-          const SizedBox(width: 12),
-          Expanded(child: cards[2]),
-          const SizedBox(width: 12),
-          Expanded(child: cards[3]),
-        ],
-      );
-    }
-
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: cards.map((card) => SizedBox(width: 220, child: card)).toList(),
+    return GridView.count(
+      crossAxisCount: 2,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.45,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: cards,
     );
   }
 
   Widget _buildStatCard(String title, int count, Color color) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       height: 130,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withValues(alpha: 0.18),
+            blurRadius: 6,
+          ),
+        ],
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(title, style: const TextStyle(fontSize: 16)),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 16,
+              color: scheme.onSurface.withValues(alpha: 0.78),
+            ),
+          ),
           const SizedBox(height: 10),
           Text(
             count.toString(),
@@ -684,102 +693,6 @@ class _DashboardState extends State<_Dashboard> {
               color: color,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionCenter(List<Map<String, dynamic>> requests) {
-    final rejected = requests
-        .where((e) => _statusValue(e) == 'rejected')
-        .toList();
-    final pending = requests
-        .where((e) => _statusValue(e) == 'pending')
-        .toList();
-
-    if (rejected.isNotEmpty) {
-      final item = rejected.first;
-      final reason = _rejectionReason(item);
-      final suggestion = _getSuggestion(reason);
-      final isBusy = _resubmittingId == (item['id']?.toString() ?? '');
-
-      return Container(
-        width: double.infinity,
-        margin: const EdgeInsets.symmetric(vertical: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.red.shade50,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.red.shade100),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Action Center',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Action Required',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text('Reason: $reason'),
-            const SizedBox(height: 8),
-            Text(suggestion, style: const TextStyle(color: Colors.orange)),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: isBusy ? null : () => _resubmit(item),
-              child: Text(isBusy ? 'Resubmitting...' : 'Fix & Resubmit'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (pending.isNotEmpty) {
-      return Container(
-        width: double.infinity,
-        margin: const EdgeInsets.symmetric(vertical: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.orange.shade50,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.orange.shade100),
-        ),
-        child: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Action Center',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text('Your OD request is under review'),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green.shade100),
-      ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Action Center',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(height: 8),
-          Text('All requests are approved'),
         ],
       ),
     );
@@ -802,10 +715,7 @@ class _DashboardState extends State<_Dashboard> {
         if (requests.isEmpty)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 24,
-              vertical: 40,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(20),
@@ -828,7 +738,9 @@ class _DashboardState extends State<_Dashboard> {
           )
         else
           Column(
-            children: requests.map((item) => PortalRequestCard(r: item)).toList(),
+            children: requests
+                .map<Widget>((item) => PortalRequestCard(r: item))
+                .toList(),
           ),
       ],
     );
@@ -928,10 +840,19 @@ class _NewODPageState extends State<_NewODPage> {
 
     try {
       final firebaseUser = FirebaseAuth.instance.currentUser;
+      final studentProfile = firebaseUser == null
+          ? <String, dynamic>{}
+          : (await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(firebaseUser.uid)
+                        .get())
+                    .data() ??
+                <String, dynamic>{};
       final emailName = LoginIdentifierNormalizer.displayNameFromEmail(
         firebaseUser?.email ?? '',
       );
-      await FirebaseFirestore.instance.collection('od_requests').add({
+      final requestReference =
+          await FirebaseFirestore.instance.collection('od_requests').add({
         'event_name': eventNameController.text.trim(),
         'datetime': selectedDateTime!.toIso8601String(),
         'start_datetime': selectedDateTime!.toIso8601String(),
@@ -943,7 +864,12 @@ class _NewODPageState extends State<_NewODPage> {
         'attachment_base64': _fileBase64,
         'attachment_mime': _fileMime,
         'attachment_name': _fileName,
-        'status': 'Pending',
+        'status': 'PENDING',
+        'department':
+            studentProfile['department'] ??
+            LoginIdentifierNormalizer.departmentFromEmail(
+              firebaseUser?.email ?? '',
+            ),
         'mentor_approved': false,
         'hod_approved': false,
         'principal_approved': false,
@@ -955,7 +881,30 @@ class _NewODPageState extends State<_NewODPage> {
         'student_name': emailName,
         'student_id': firebaseUser?.uid ?? '',
         'current_approver_role': 'mentor',
+        'assigned_mentor_id':
+            studentProfile['mentor_id'] ??
+            studentProfile['mentorId'] ??
+            studentProfile['assigned_mentor_id'] ??
+            studentProfile['assigned_mentor_uid'] ??
+            studentProfile['class_advisor_id'] ??
+            studentProfile['classAdvisorId'],
+        'assigned_hod_id':
+            studentProfile['hod_id'] ??
+            studentProfile['hodId'] ??
+            studentProfile['assigned_hod_id'] ??
+            studentProfile['assigned_hod_uid'],
+        'assigned_principal_id':
+            studentProfile['principal_id'] ??
+            studentProfile['principalId'] ??
+            studentProfile['assigned_principal_id'] ??
+            studentProfile['assigned_principal_uid'],
       });
+      debugPrint(
+        'OD submitted: id=${requestReference.id} stage=mentor '
+        'mentor=${studentProfile['mentor_id'] ?? studentProfile['mentorId'] ?? studentProfile['assigned_mentor_id']} '
+        'hod=${studentProfile['hod_id'] ?? studentProfile['hodId'] ?? studentProfile['assigned_hod_id']} '
+        'principal=${studentProfile['principal_id'] ?? studentProfile['principalId'] ?? studentProfile['assigned_principal_id']}',
+      );
       await FirebaseFirestore.instance.collection('notifications').add({
         'role': 'mentor',
         'title': 'New OD Request',
@@ -1324,27 +1273,31 @@ class _NewODPageState extends State<_NewODPage> {
 
   Future<void> _pickFile() async {
     setState(() => _fileLoading = true);
-    final input = html.FileUploadInputElement();
-    input.accept = '.pdf,.jpg,.jpeg,.png';
-    input.click();
-
-    await input.onChange.first;
-    if (input.files == null || input.files!.isEmpty) {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
       setState(() => _fileLoading = false);
       return;
     }
 
-    final file = input.files![0];
-    final reader = html.FileReader();
-    reader.readAsDataUrl(file);
-    await reader.onLoad.first;
+    final file = result.files.single;
+    final bytes = file.bytes;
+    if (bytes == null) {
+      if (!mounted) return;
+      setState(() => _fileLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to read the selected file'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
-    final result = reader.result as String;
-    final commaIdx = result.indexOf(',');
-    final base64 = result.substring(commaIdx + 1);
-    final mime = result.substring(5, result.indexOf(';'));
-
-    if (base64.length * 3 / 4 > 5 * 1024 * 1024) {
+    if (bytes.length > 5 * 1024 * 1024) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1356,9 +1309,18 @@ class _NewODPageState extends State<_NewODPage> {
       return;
     }
 
+    final base64 = base64Encode(bytes);
+    final extension = file.extension?.toLowerCase();
+    final mime = switch (extension) {
+      'pdf' => 'application/pdf',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      _ => 'application/octet-stream',
+    };
+
     setState(() {
       _fileName = file.name;
-      _fileUrl = result;
+      _fileUrl = 'data:$mime;base64,$base64';
       _fileBase64 = base64;
       _fileMime = mime;
       _fileLoading = false;
@@ -1378,19 +1340,36 @@ class _HistoryPageState extends State<_HistoryPage> {
   bool _loading = true;
   List _items = [];
   String? _error;
+  StreamSubscription<List<Map<String, dynamic>>>? _requestsSubscription;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _requestsSubscription = OdApi.watchMyRequests().listen((items) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = null;
+        _items = items;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _requestsSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
     });
     final r = await OdApi.myRequests();
+    if (!mounted) return;
     setState(() {
       _loading = false;
       if (r.ok) {
@@ -1490,13 +1469,7 @@ class _HistoryPageState extends State<_HistoryPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    ..._items
-                        .where((r) {
-                          final status = (r['status']?.toString() ?? '')
-                              .toLowerCase();
-                          return status == 'approved' || status == 'rejected';
-                        })
-                        .map((r) => _historyListItem(r as Map)),
+                    ..._items.map<Widget>((r) => _historyListItem(r as Map)),
                   ],
                 ),
               ),
@@ -1508,17 +1481,22 @@ class _HistoryPageState extends State<_HistoryPage> {
   }
 
   Widget _historyListItem(Map r) {
+    final scheme = Theme.of(context).colorScheme;
     final status = r['status']?.toString() ?? 'Pending';
-    final isApproved = status.toLowerCase() == 'approved';
-    final color = isApproved ? Colors.green : Colors.red;
+    final isApproved = portalOdStatusIsApproved(status);
+    final color = isApproved
+        ? Colors.green
+        : portalOdStatusIsRejected(status)
+        ? Colors.red
+        : Colors.orange;
     final dateText = portalOdDateTime(r['datetime']);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6ECF5)),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -1536,6 +1514,8 @@ class _HistoryPageState extends State<_HistoryPage> {
                 const SizedBox(height: 4),
                 Text(dateText, style: const TextStyle(color: Colors.grey)),
                 const SizedBox(height: 10),
+                PortalHistoryRequestDetails(request: r),
+                PortalApprovalTimeline(value: r['workflow_history']),
                 ProofActionButtons(
                   fileUrl: r['file_url']?.toString() ?? '',
                   showDownload: true,
@@ -1572,9 +1552,9 @@ class _ProfilePage extends StatelessWidget {
             FirebaseFirestore.instance.collection('users').doc('').get(),
           )
         : FirebaseFirestore.instance
-            .collection('users')
-            .doc(firebaseUser.uid)
-            .get();
+              .collection('users')
+              .doc(firebaseUser.uid)
+              .get();
 
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       future: profileFuture,
@@ -1583,9 +1563,11 @@ class _ProfilePage extends StatelessWidget {
         final emailName = LoginIdentifierNormalizer.displayNameFromEmail(
           firebaseUser?.email ?? '',
         );
-        final storedName = (sp['full_name'] ?? sp['name'] ?? '').toString().trim();
-        final name = storedName.isNotEmpty
-                && storedName.toLowerCase() != 'student'
+        final storedName = (sp['full_name'] ?? sp['name'] ?? '')
+            .toString()
+            .trim();
+        final name =
+            storedName.isNotEmpty && storedName.toLowerCase() != 'student'
             ? storedName
             : emailName;
         final initials = name
@@ -1594,111 +1576,109 @@ class _ProfilePage extends StatelessWidget {
             .map((w) => w.isNotEmpty ? w[0] : '')
             .join()
             .toUpperCase();
-        final registerNumber = (sp['register_number'] ??
-                sp['reg_no'] ??
-                sp['regNo'] ??
-                '')
-            .toString();
+        final registerNumber =
+            (sp['register_number'] ?? sp['reg_no'] ?? sp['regNo'] ?? '')
+                .toString();
 
         return Stack(
-      fit: StackFit.expand,
-      children: [
-        const PortalDecoratedBackground(bottomCircleOffset: 90),
-        SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-          child: Column(
-            children: [
-              const Text(
-                'Profile',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 28),
-                decoration: portalCardDecoration(context),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 48,
-                      backgroundColor: kBlue,
-                      child: Text(
-                        initials,
-                        style: const TextStyle(
-                          fontSize: 30,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+          fit: StackFit.expand,
+          children: [
+            const PortalDecoratedBackground(bottomCircleOffset: 90),
+            SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+              child: Column(
+                children: [
+                  const Text(
+                    'Profile',
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 28),
+                    decoration: portalCardDecoration(context),
+                    child: Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 48,
+                          backgroundColor: kBlue,
+                          child: Text(
+                            initials,
+                            style: const TextStyle(
+                              fontSize: 30,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
+                        const SizedBox(height: 14),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          registerNumber,
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _infoCard(context, [
+                    (
+                      'Department',
+                      _profileValue(
+                        sp['department'] ??
+                            LoginIdentifierNormalizer.departmentFromEmail(
+                              firebaseUser?.email ?? '',
+                            ),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                    ('Section', _profileValue(sp['section'])),
+                    ('Semester', _profileValue(sp['semester'])),
+                    ('Batch', _profileValue(sp['batch'])),
+                    (
+                      'Attendance',
+                      sp['attendance_percent'] != null
+                          ? '${sp['attendance_percent']}%'
+                          : '—',
+                    ),
+                  ]),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.logout, color: Colors.red),
+                      label: const Text(
+                        'Logout',
+                        style: TextStyle(color: Colors.red, fontSize: 16),
                       ),
-                    ),
-                    Text(
-                      registerNumber,
-                      style: TextStyle(color: Colors.grey.shade700),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              _infoCard(context, [
-                (
-                  'Department',
-                  _profileValue(
-                    sp['department'] ??
-                        LoginIdentifierNormalizer.departmentFromEmail(
-                          firebaseUser?.email ?? '',
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.red),
+                        backgroundColor: Theme.of(context).colorScheme.surface,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                  ),
-                ),
-                ('Section', _profileValue(sp['section'])),
-                ('Semester', _profileValue(sp['semester'])),
-                ('Batch', _profileValue(sp['batch'])),
-                (
-                  'Attendance',
-                  sp['attendance_percent'] != null
-                      ? '${sp['attendance_percent']}%'
-                      : '—',
-                ),
-              ]),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.logout, color: Colors.red),
-                  label: const Text(
-                    'Logout',
-                    style: TextStyle(color: Colors.red, fontSize: 16),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.red),
-                    backgroundColor: Theme.of(context).colorScheme.surface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      ),
+                      onPressed: () async {
+                        await FirebaseAuth.instance.signOut();
+                        AuthStore.clear();
+                        if (!context.mounted) return;
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (_) => const ODLoginUI()),
+                          (_) => false,
+                        );
+                      },
                     ),
                   ),
-                  onPressed: () async {
-                    await FirebaseAuth.instance.signOut();
-                    AuthStore.clear();
-                    if (!context.mounted) return;
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const ODLoginUI()),
-                      (_) => false,
-                    );
-                  },
-                ),
+                ],
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
         );
       },
     );

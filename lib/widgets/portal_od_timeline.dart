@@ -47,8 +47,12 @@ List<OdTimelineStage> odTimelineStagesFromRequest(Map<dynamic, dynamic> r) {
   }
 
   OdStageState principalState() {
-    if (status == 'Rejected') return OdStageState.rejected;
-    if (principalApproved || status == 'Approved') {
+    if (status == 'Rejected' ||
+        status == 'REJECTED' ||
+        status == 'PRINCIPAL_REJECTED') {
+      return OdStageState.rejected;
+    }
+    if (principalApproved || status == 'Approved' || status == 'ACCEPTED') {
       return OdStageState.completed;
     }
     if (const {'MENTOR_REJECTED', 'HOD_REJECTED'}.contains(status)) {

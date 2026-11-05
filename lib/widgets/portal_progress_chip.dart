@@ -14,23 +14,24 @@ class PortalProgressChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final Color bg;
     final Color fg;
     final IconData icon;
     switch (state) {
       case PortalChipState.completed:
-        bg = Colors.green.shade100;
-        fg = Colors.green;
+        bg = scheme.secondaryContainer;
+        fg = scheme.onSecondaryContainer;
         icon = Icons.check_circle;
         break;
       case PortalChipState.rejected:
-        bg = Colors.red.shade50;
-        fg = Colors.red;
+        bg = scheme.errorContainer;
+        fg = scheme.onErrorContainer;
         icon = Icons.cancel;
         break;
       case PortalChipState.pending:
-        bg = Colors.orange.shade50;
-        fg = Colors.orange.shade800;
+        bg = scheme.tertiaryContainer;
+        fg = scheme.onTertiaryContainer;
         icon = Icons.schedule;
         break;
     }

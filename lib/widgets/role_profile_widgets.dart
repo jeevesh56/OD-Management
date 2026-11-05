@@ -14,15 +14,20 @@ class RoleProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withValues(alpha: 0.18),
+            blurRadius: 8,
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -44,14 +49,14 @@ class RoleProfileCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: textColor,
+                    color: scheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   role,
                   style: TextStyle(
-                    color: textColor?.withValues(alpha: 0.7),
+                    color: scheme.onSurface.withValues(alpha: 0.7),
                     fontSize: 14,
                   ),
                 ),
@@ -61,7 +66,7 @@ class RoleProfileCard extends StatelessWidget {
                     subtitle!,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: textColor?.withValues(alpha: 0.75),
+                      color: scheme.onSurface.withValues(alpha: 0.75),
                       fontSize: 13,
                     ),
                   ),
@@ -84,29 +89,16 @@ class DashboardStatGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 900;
-        if (isWide && items.length >= 4) {
-          return Row(
-            children: List.generate(items.length, (index) {
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: index == items.length - 1 ? 0 : 10,
-                  ),
-                  child: _DashboardStatBox(item: items[index]),
-                ),
-              );
-            }),
-          );
-        }
-
+        final columns = items.length == 4 ? 2 : 1;
+        final spacing = 10.0;
+        final width = (constraints.maxWidth - spacing) / columns;
         return Wrap(
-          spacing: 10,
-          runSpacing: 10,
+          spacing: spacing,
+          runSpacing: spacing,
           children: items
               .map(
                 (item) => SizedBox(
-                  width: 220,
+                  width: width,
                   child: _DashboardStatBox(item: item),
                 ),
               )
@@ -136,15 +128,21 @@ class _DashboardStatBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = Theme.of(context).textTheme.bodyMedium?.color;
-    final accent = item.accentColor ?? Theme.of(context).colorScheme.primary;
+    final scheme = Theme.of(context).colorScheme;
+    final textColor = scheme.onSurface;
+    final accent = item.accentColor ?? scheme.primary;
     final background = accent.withValues(alpha: 0.1);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withValues(alpha: 0.18),
+            blurRadius: 5,
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -160,7 +158,7 @@ class _DashboardStatBox extends StatelessWidget {
           Text(
             item.title,
             style: TextStyle(
-              color: textColor?.withValues(alpha: 0.85),
+              color: textColor.withValues(alpha: 0.85),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -186,16 +184,22 @@ class RoleProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final scheme = Theme.of(context).colorScheme;
+    final textColor = scheme.onSurface;
     return Column(
       children: [
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 28),
           decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+            boxShadow: [
+              BoxShadow(
+                color: scheme.shadow.withValues(alpha: 0.18),
+                blurRadius: 6,
+              ),
+            ],
           ),
           child: Column(
             children: [
@@ -217,25 +221,22 @@ class RoleProfilePage extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: textColor,
+                  color: scheme.onSurface,
                 ),
               ),
               Text(
                 role,
-                style: TextStyle(color: textColor?.withValues(alpha: 0.8)),
+                style: TextStyle(color: textColor.withValues(alpha: 0.8)),
               ),
             ],
           ),
         ),
         const SizedBox(height: 16),
-        _infoCard(
-          context,
-          [
-            ('Name', name),
-            ('Role', role),
-            ('Department', department),
-          ],
-        ),
+        _infoCard(context, [
+          ('Name', name),
+          ('Role', role),
+          ('Department', department),
+        ]),
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
@@ -260,12 +261,18 @@ class RoleProfilePage extends StatelessWidget {
   }
 
   Widget _infoCard(BuildContext context, List<(String, String)> rows) {
-    final textColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final scheme = Theme.of(context).colorScheme;
+    final textColor = scheme.onSurface;
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withValues(alpha: 0.18),
+            blurRadius: 6,
+          ),
+        ],
       ),
       child: Column(
         children: List.generate(
@@ -282,7 +289,7 @@ class RoleProfilePage extends StatelessWidget {
                   children: [
                     Text(
                       rows[i].$1,
-                      style: TextStyle(color: textColor?.withValues(alpha: 0.7)),
+                      style: TextStyle(color: textColor.withValues(alpha: 0.7)),
                     ),
                     Text(
                       rows[i].$2,

@@ -32,8 +32,13 @@ class PortalRequestDetailScreen extends StatelessWidget {
     final hodDone = request['hod_approved'] == true || status == 'HOD_APPROVED';
     final hodRejected = status == 'HOD_REJECTED';
     final principalDone =
-        request['principal_approved'] == true || status == 'Approved';
-    final principalRejected = status == 'Rejected';
+        request['principal_approved'] == true ||
+        status == 'Approved' ||
+        status == 'ACCEPTED';
+    final principalRejected =
+        status == 'Rejected' ||
+        status == 'REJECTED' ||
+        status == 'PRINCIPAL_REJECTED';
 
     return Scaffold(
       backgroundColor: scheme.surfaceContainerLowest,
@@ -260,6 +265,9 @@ class PortalRequestDetailScreen extends StatelessWidget {
                               stages: stages,
                               compact: true,
                             ),
+                            PortalWorkflowHistory(
+                              value: request['workflow_history'],
+                            ),
                             const SizedBox(height: 8),
                             SizedBox(
                               width: double.infinity,
@@ -293,6 +301,7 @@ class PortalRequestDetailScreen extends StatelessWidget {
                         ),
                       ),
                       if (status == 'Approved' ||
+                          status == 'ACCEPTED' ||
                           request['principal_approved'] == true) ...[
                         const SizedBox(height: 16),
                         SizedBox(

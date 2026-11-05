@@ -12,9 +12,9 @@ class OdRequestService {
     required OdRequestRepository requestRepository,
     required ApprovalRepository approvalRepository,
     required RoleAccessService roleAccessService,
-  })  : _requestRepository = requestRepository,
-        _approvalRepository = approvalRepository,
-        _roleAccessService = roleAccessService;
+  }) : _requestRepository = requestRepository,
+       _approvalRepository = approvalRepository,
+       _roleAccessService = roleAccessService;
 
   final OdRequestRepository _requestRepository;
   final ApprovalRepository _approvalRepository;
@@ -29,7 +29,8 @@ class OdRequestService {
       return const RuleValidationResult([
         RuleViolation(
           code: 'UNAUTHORIZED_OD_CREATE',
-          message: 'Only students and mentors with EC permission can create OD requests.',
+          message:
+              'Only students and mentors with EC permission can create OD requests.',
         ),
       ]);
     }
@@ -55,7 +56,10 @@ class OdRequestService {
     final request = await _requestRepository.getById(requestId);
     if (request == null) {
       return const RuleValidationResult([
-        RuleViolation(code: 'REQUEST_NOT_FOUND', message: 'OD request not found.'),
+        RuleViolation(
+          code: 'REQUEST_NOT_FOUND',
+          message: 'OD request not found.',
+        ),
       ]);
     }
 
@@ -68,12 +72,40 @@ class OdRequestService {
       ]);
     }
 
+    final expectedRole =
+        request.currentApproverRole ??
+        (request.mentorApproved
+            ? request.hodApproved
+                  ? request.principalApproved
+                        ? 'closed'
+                        : 'principal'
+                  : 'hod'
+            : 'mentor');
+    final actorRoleValue = actorRole == UserRole.mentor
+        ? 'mentor'
+        : actorRole == UserRole.hod
+        ? 'hod'
+        : actorRole == UserRole.principal || actorRole == UserRole.admin
+        ? 'principal'
+        : 'student';
+    if (expectedRole != actorRoleValue) {
+      return const RuleValidationResult([
+        RuleViolation(
+          code: 'UNAUTHORIZED_APPROVAL',
+          message: 'This request is assigned to another approval role.',
+        ),
+      ]);
+    }
+
     if (!isApproved) {
       final reasonValidation = OdRuleEngine.validateRejectionReason(reason);
       if (!reasonValidation.isValid) return reasonValidation;
     }
 
-    final nextStatus = _nextStatus(actorRole: actorRole, isApproved: isApproved);
+    final nextStatus = _nextStatus(
+      actorRole: actorRole,
+      isApproved: isApproved,
+    );
     if (nextStatus == null) {
       return const RuleValidationResult([
         RuleViolation(
@@ -99,6 +131,21 @@ class OdRequestService {
       isPinned: request.isPinned,
       createdAt: request.createdAt,
       updatedAt: DateTime.now(),
+      mentorApproved:
+          request.mentorApproved ||
+          (actorRole == UserRole.mentor && isApproved),
+      hodApproved:
+          request.hodApproved || (actorRole == UserRole.hod && isApproved),
+      principalApproved:
+          request.principalApproved ||
+          (actorRole == UserRole.principal && isApproved),
+      currentApproverRole: isApproved
+          ? actorRole == UserRole.mentor
+                ? 'hod'
+                : actorRole == UserRole.hod
+                ? 'principal'
+                : 'closed'
+          : 'closed',
     );
 
     await _requestRepository.update(updated);
@@ -124,10 +171,10 @@ class OdRequestService {
     switch (actorRole) {
       case UserRole.mentor:
         if (!_roleAccessService.canApproveAsMentor(actorRole)) return null;
-        return isApproved ? OdStatus.mentorApproved : OdStatus.mentorRejected;
+        return isApproved ? OdStatus.pending : OdStatus.mentorRejected;
       case UserRole.hod:
         if (!_roleAccessService.canApproveAsHod(actorRole)) return null;
-        return isApproved ? OdStatus.hodApproved : OdStatus.hodRejected;
+        return isApproved ? OdStatus.pending : OdStatus.hodRejected;
       case UserRole.principal:
       case UserRole.admin:
         if (!_roleAccessService.canApproveAsPrincipal(actorRole)) return null;
