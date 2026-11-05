@@ -7,6 +7,7 @@ import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
 import 'widgets/portal_od_helpers.dart';
+import 'widgets/portal_request_card.dart';
 import 'widgets/proof_action_buttons.dart';
 import 'widgets/role_profile_widgets.dart';
 
@@ -45,21 +46,24 @@ class _MentorHomeScreenState extends State<MentorHomeScreen> {
   void initState() {
     super.initState();
     _loadAll();
-    _requestsSubscription = MentorApi.watchData().listen((snapshot) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = null;
-        _queue = snapshot.queue;
-        _history = snapshot.history;
-      });
-    }, onError: (Object error, StackTrace stackTrace) {
+    _requestsSubscription = MentorApi.watchData().listen(
+      (snapshot) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _error = null;
+          _queue = snapshot.queue;
+          _history = snapshot.history;
+        });
+      },
+      onError: (Object error, StackTrace stackTrace) {
         if (!mounted) return;
         setState(() {
           _loading = false;
           _error = 'Unable to load Mentor data: $error';
-      });
-    });
+        });
+      },
+    );
   }
 
   @override
@@ -624,7 +628,6 @@ class _HistoryPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final historyRows = rows;
 
     if (historyRows.isEmpty) {
@@ -636,70 +639,11 @@ class _HistoryPanel extends StatelessWidget {
     }
 
     return Column(
-      children: historyRows.map<Widget>((row) {
-        final status = portalRoleDecisionDisplay(row, 'mentor');
-        final isApproved = status.startsWith('Approved');
-        final color = isApproved
-            ? Colors.green
-            : status.startsWith('Rejected')
-            ? Colors.red
-            : Colors.orange;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: scheme.outlineVariant),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                isApproved
-                    ? Icons.check_circle
-                    : status.startsWith('Rejected')
-                    ? Icons.cancel
-                    : Icons.schedule,
-                color: color,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      row['event_name']?.toString() ?? 'Untitled event',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    Text(
-                      portalOdDateTime(row['datetime']),
-                      style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: 0.65),
-                      ),
-                    ),
-                    PortalHistoryRequestDetails(request: row),
-                    ProofActionButtons(
-                      fileUrl: row['file_url']?.toString() ?? '',
-                    ),
-                    Text(
-                      '${status.startsWith('Approved')
-                          ? 'Approved'
-                          : status.startsWith('Rejected')
-                          ? 'Rejected'
-                          : 'Pending'} by ${portalRoleDecisionActor(row, 'mentor')}',
-                      style: TextStyle(color: color),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                status,
-                style: TextStyle(color: color, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
+      children: historyRows
+          .map<Widget>(
+            (row) => PortalCompactHistoryCard(request: row, role: 'mentor'),
+          )
+          .toList(),
     );
   }
 }

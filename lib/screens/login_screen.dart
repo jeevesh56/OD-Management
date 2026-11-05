@@ -257,7 +257,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         );
         return;
       }
-      await _openRole('mentor', const MentorHomeScreen());
+      await _openRole('mentor');
       return;
     } else if (_loginType == 'principal') {
       if (_emailController.text.trim().isEmpty ||
@@ -267,7 +267,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         );
         return;
       }
-      await _openRole('principal', const PrincipalHomeScreen());
+      await _openRole('principal');
       return;
     } else if (_loginType == 'hod') {
       if (_emailController.text.trim().isEmpty ||
@@ -277,7 +277,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
         );
         return;
       }
-      await _openRole('hod', const HoDHomeScreen());
+      await _openRole('hod');
       return;
     }
     if (!_isValidStudentEmail) {
@@ -294,7 +294,7 @@ class _ODLoginUIState extends State<ODLoginUI> {
     await _signIn();
   }
 
-  Future<void> _openRole(String role, Widget screen) async {
+  Future<void> _openRole(String role) async {
     final normalizedLogin = LoginIdentifierNormalizer.toEmail(
       _emailController.text,
     );
@@ -323,10 +323,24 @@ class _ODLoginUIState extends State<ODLoginUI> {
     }
     AuthStore.role = role;
     if (!mounted) return;
-    Navigator.pushReplacement(
+    Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (_) => screen),
+      MaterialPageRoute(builder: (_) => _screenForRole(role)),
+      (_) => false,
     );
+  }
+
+  Widget _screenForRole(String role) {
+    switch (role) {
+      case 'mentor':
+        return MentorHomeScreen(key: UniqueKey());
+      case 'hod':
+        return HoDHomeScreen(key: UniqueKey());
+      case 'principal':
+        return PrincipalHomeScreen(key: UniqueKey());
+      default:
+        return StudentHomeScreen(key: UniqueKey());
+    }
   }
 
   Future<void> _signIn() async {
@@ -346,9 +360,12 @@ class _ODLoginUIState extends State<ODLoginUI> {
           password: _passwordController.text,
         );
         if (!mounted) return;
-        Navigator.pushReplacement(
+        Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const StudentHomeScreen()),
+          MaterialPageRoute(
+            builder: (_) => StudentHomeScreen(key: UniqueKey()),
+          ),
+          (_) => false,
         );
         return;
       } on FirebaseAuthException catch (error) {

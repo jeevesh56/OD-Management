@@ -3,6 +3,109 @@ import 'package:flutter/material.dart';
 import '../screens/portal_request_detail_screen.dart';
 import 'portal_od_helpers.dart';
 import 'portal_progress_chip.dart';
+import 'proof_action_buttons.dart';
+
+class PortalCompactHistoryCard extends StatelessWidget {
+  const PortalCompactHistoryCard({
+    super.key,
+    required this.request,
+    this.role,
+    this.showDownload = false,
+  });
+
+  final Map<dynamic, dynamic> request;
+  final String? role;
+  final bool showDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final rawStatus = role == null
+        ? request['status']?.toString() ?? 'Pending'
+        : portalRoleDecisionDisplay(request, role!);
+    final status = rawStatus.split(' — ').first;
+    final isApproved = status.startsWith('Approved');
+    final isRejected = status.startsWith('Rejected');
+    final color = isApproved
+        ? Colors.green
+        : isRejected
+        ? Colors.red
+        : Colors.orange;
+    final actor = role == null ? null : portalRoleDecisionActor(request, role!);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        leading: Icon(
+          isApproved
+              ? Icons.check_circle
+              : isRejected
+              ? Icons.cancel
+              : Icons.schedule,
+          color: color,
+        ),
+        title: Text(
+          request['event_name']?.toString() ?? 'Untitled event',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(
+          '${portalOdDateTime(request['datetime'])}'
+          '${actor == null ? '' : ' • $status by $actor'}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: scheme.onSurface.withValues(alpha: 0.65),
+            fontSize: 12,
+          ),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            status,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        children: [
+          PortalHistoryRequestDetails(request: request),
+          if (role == null)
+            PortalApprovalTimeline(value: request['workflow_history'])
+          else
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '$status by ${actor ?? 'Unknown'}',
+                  style: TextStyle(color: color),
+                ),
+              ),
+            ),
+          ProofActionButtons(
+            fileUrl: request['file_url']?.toString() ?? '',
+            showDownload: showDownload,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// Single OD request card — tappable → [PortalRequestDetailScreen].
 class PortalRequestCard extends StatelessWidget {

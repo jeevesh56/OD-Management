@@ -114,11 +114,13 @@ class DashboardStatItem {
     required this.title,
     required this.value,
     this.accentColor,
+    this.onTap,
   });
 
   final String title;
   final String value;
   final Color? accentColor;
+  final VoidCallback? onTap;
 }
 
 class _DashboardStatBox extends StatelessWidget {
@@ -132,37 +134,45 @@ class _DashboardStatBox extends StatelessWidget {
     final textColor = scheme.onSurface;
     final accent = item.accentColor ?? scheme.primary;
     final background = accent.withValues(alpha: 0.1);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: background,
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: item.onTap,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.shadow.withValues(alpha: 0.18),
-            blurRadius: 5,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: scheme.shadow.withValues(alpha: 0.18),
+                blurRadius: 5,
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Text(
-            item.value,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: accent,
-            ),
+          child: Column(
+            children: [
+              Text(
+                item.value,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: accent,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                item.title,
+                style: TextStyle(
+                  color: textColor.withValues(alpha: 0.85),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            item.title,
-            style: TextStyle(
-              color: textColor.withValues(alpha: 0.85),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

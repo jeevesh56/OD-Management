@@ -15,7 +15,6 @@ import 'screens/login_screen.dart';
 import 'widgets/portal_od_helpers.dart';
 import 'widgets/portal_page_layout.dart';
 import 'widgets/portal_request_card.dart';
-import 'widgets/proof_action_buttons.dart';
 import 'widgets/timetable_page.dart';
 
 const Color kStudentPrimary = Color(0xFF1257B0);
@@ -851,54 +850,55 @@ class _NewODPageState extends State<_NewODPage> {
       final emailName = LoginIdentifierNormalizer.displayNameFromEmail(
         firebaseUser?.email ?? '',
       );
-      final requestReference =
-          await FirebaseFirestore.instance.collection('od_requests').add({
-        'event_name': eventNameController.text.trim(),
-        'datetime': selectedDateTime!.toIso8601String(),
-        'start_datetime': selectedDateTime!.toIso8601String(),
-        'venue': venueController.text.trim(),
-        'organizer': organizerController.text.trim(),
-        'organiser': organizerController.text.trim(),
-        'reason': reason,
-        'file_url': _fileUrl ?? '',
-        'attachment_base64': _fileBase64,
-        'attachment_mime': _fileMime,
-        'attachment_name': _fileName,
-        'status': 'PENDING',
-        'department':
-            studentProfile['department'] ??
-            LoginIdentifierNormalizer.departmentFromEmail(
-              firebaseUser?.email ?? '',
-            ),
-        'mentor_approved': false,
-        'hod_approved': false,
-        'principal_approved': false,
-        'rejected': false,
-        'is_pinned': false,
-        'expired': false,
-        'created_at': FieldValue.serverTimestamp(),
-        'updated_at': FieldValue.serverTimestamp(),
-        'student_name': emailName,
-        'student_id': firebaseUser?.uid ?? '',
-        'current_approver_role': 'mentor',
-        'assigned_mentor_id':
-            studentProfile['mentor_id'] ??
-            studentProfile['mentorId'] ??
-            studentProfile['assigned_mentor_id'] ??
-            studentProfile['assigned_mentor_uid'] ??
-            studentProfile['class_advisor_id'] ??
-            studentProfile['classAdvisorId'],
-        'assigned_hod_id':
-            studentProfile['hod_id'] ??
-            studentProfile['hodId'] ??
-            studentProfile['assigned_hod_id'] ??
-            studentProfile['assigned_hod_uid'],
-        'assigned_principal_id':
-            studentProfile['principal_id'] ??
-            studentProfile['principalId'] ??
-            studentProfile['assigned_principal_id'] ??
-            studentProfile['assigned_principal_uid'],
-      });
+      final requestReference = await FirebaseFirestore.instance
+          .collection('od_requests')
+          .add({
+            'event_name': eventNameController.text.trim(),
+            'datetime': selectedDateTime!.toIso8601String(),
+            'start_datetime': selectedDateTime!.toIso8601String(),
+            'venue': venueController.text.trim(),
+            'organizer': organizerController.text.trim(),
+            'organiser': organizerController.text.trim(),
+            'reason': reason,
+            'file_url': _fileUrl ?? '',
+            'attachment_base64': _fileBase64,
+            'attachment_mime': _fileMime,
+            'attachment_name': _fileName,
+            'status': 'PENDING',
+            'department':
+                studentProfile['department'] ??
+                LoginIdentifierNormalizer.departmentFromEmail(
+                  firebaseUser?.email ?? '',
+                ),
+            'mentor_approved': false,
+            'hod_approved': false,
+            'principal_approved': false,
+            'rejected': false,
+            'is_pinned': false,
+            'expired': false,
+            'created_at': FieldValue.serverTimestamp(),
+            'updated_at': FieldValue.serverTimestamp(),
+            'student_name': emailName,
+            'student_id': firebaseUser?.uid ?? '',
+            'current_approver_role': 'mentor',
+            'assigned_mentor_id':
+                studentProfile['mentor_id'] ??
+                studentProfile['mentorId'] ??
+                studentProfile['assigned_mentor_id'] ??
+                studentProfile['assigned_mentor_uid'] ??
+                studentProfile['class_advisor_id'] ??
+                studentProfile['classAdvisorId'],
+            'assigned_hod_id':
+                studentProfile['hod_id'] ??
+                studentProfile['hodId'] ??
+                studentProfile['assigned_hod_id'] ??
+                studentProfile['assigned_hod_uid'],
+            'assigned_principal_id':
+                studentProfile['principal_id'] ??
+                studentProfile['principalId'] ??
+                studentProfile['assigned_principal_id'] ??
+                studentProfile['assigned_principal_uid'],
+          });
       debugPrint(
         'OD submitted: id=${requestReference.id} stage=mentor '
         'mentor=${studentProfile['mentor_id'] ?? studentProfile['mentorId'] ?? studentProfile['assigned_mentor_id']} '
@@ -1469,7 +1469,12 @@ class _HistoryPageState extends State<_HistoryPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    ..._items.map<Widget>((r) => _historyListItem(r as Map)),
+                    ..._items.map<Widget>(
+                      (r) => PortalCompactHistoryCard(
+                        request: r as Map,
+                        showDownload: true,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1477,65 +1482,6 @@ class _HistoryPageState extends State<_HistoryPage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _historyListItem(Map r) {
-    final scheme = Theme.of(context).colorScheme;
-    final status = r['status']?.toString() ?? 'Pending';
-    final isApproved = portalOdStatusIsApproved(status);
-    final color = isApproved
-        ? Colors.green
-        : portalOdStatusIsRejected(status)
-        ? Colors.red
-        : Colors.orange;
-    final dateText = portalOdDateTime(r['datetime']);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  r['event_name']?.toString() ?? 'Untitled event',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(dateText, style: const TextStyle(color: Colors.grey)),
-                const SizedBox(height: 10),
-                PortalHistoryRequestDetails(request: r),
-                PortalApprovalTimeline(value: r['workflow_history']),
-                ProofActionButtons(
-                  fileUrl: r['file_url']?.toString() ?? '',
-                  showDownload: true,
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              status,
-              style: TextStyle(color: color, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

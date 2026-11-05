@@ -7,6 +7,7 @@ import 'api_service.dart';
 import 'main.dart';
 import 'screens/login_screen.dart';
 import 'widgets/portal_od_helpers.dart';
+import 'widgets/portal_request_card.dart';
 import 'widgets/proof_action_buttons.dart';
 import 'widgets/role_profile_widgets.dart';
 
@@ -47,30 +48,33 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
   void initState() {
     super.initState();
     _loadAll();
-    _requestsSubscription = HoDApi.watchData().listen((snapshot) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = null;
-        _requests = snapshot.queue;
-        _history = snapshot.history;
-        _analytics = {
-          'total':
-              snapshot.queue.length +
-              snapshot.approvedCount +
-              snapshot.rejectedCount,
-          'approved': snapshot.approvedCount,
-          'pending': snapshot.queue.length,
-          'rejected': snapshot.rejectedCount,
-        };
-      });
-    }, onError: (Object error, StackTrace stackTrace) {
+    _requestsSubscription = HoDApi.watchData().listen(
+      (snapshot) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _error = null;
+          _requests = snapshot.queue;
+          _history = snapshot.history;
+          _analytics = {
+            'total':
+                snapshot.queue.length +
+                snapshot.approvedCount +
+                snapshot.rejectedCount,
+            'approved': snapshot.approvedCount,
+            'pending': snapshot.queue.length,
+            'rejected': snapshot.rejectedCount,
+          };
+        });
+      },
+      onError: (Object error, StackTrace stackTrace) {
         if (!mounted) return;
         setState(() {
           _loading = false;
           _error = 'Unable to load HoD data: $error';
-      });
-    });
+        });
+      },
+    );
   }
 
   @override
@@ -256,12 +260,10 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
   String _titleForSection(int section) {
     switch (section) {
       case 1:
-        return 'Participants';
-      case 2:
         return 'OD Requests';
-      case 3:
+      case 2:
         return 'History';
-      case 4:
+      case 3:
         return 'Profile';
       default:
         return 'Dashboard';
@@ -271,22 +273,22 @@ class _HoDHomeScreenState extends State<HoDHomeScreen> {
   Widget _contentBySection(BuildContext context) {
     switch (_section) {
       case 1:
-        return _ParticipantsTable(
+        return _ODRequestsPanel(
           requests: _requests,
           onApprove: _approve,
           onReject: _reject,
         );
       case 2:
-        return _EventsPanel(sessions: _sessions, requests: _requests);
-      case 3:
         return _HistoryPanel(rows: _history);
-      case 4:
+      case 3:
         return _ProfilePanel(onLogout: _logout);
       default:
         return _DashboardPanel(
           requests: _requests,
+          history: _history,
           sessions: _sessions,
           analytics: _analytics,
+          onOpenRequests: () => _onTapSection(1),
         );
     }
   }
@@ -390,28 +392,22 @@ class _Sidebar extends StatelessWidget {
             onTap: () => onTap(0),
           ),
           _SidebarItem(
-            icon: Icons.people_alt_rounded,
-            label: 'Participants',
+            icon: Icons.event_note_rounded,
+            label: 'OD Requests',
             active: current == 1,
             onTap: () => onTap(1),
           ),
           _SidebarItem(
-            icon: Icons.event_note_rounded,
-            label: 'OD Requests',
+            icon: Icons.history_rounded,
+            label: 'History',
             active: current == 2,
             onTap: () => onTap(2),
           ),
           _SidebarItem(
-            icon: Icons.history_rounded,
-            label: 'History',
-            active: current == 3,
-            onTap: () => onTap(3),
-          ),
-          _SidebarItem(
             icon: Icons.person_rounded,
             label: 'Profile',
-            active: current == 4,
-            onTap: () => onTap(4),
+            active: current == 3,
+            onTap: () => onTap(3),
           ),
           const Spacer(),
           Padding(
@@ -558,28 +554,47 @@ class _Topbar extends StatelessWidget {
 class _DashboardPanel extends StatelessWidget {
   const _DashboardPanel({
     required this.requests,
+    required this.history,
     required this.sessions,
     required this.analytics,
+    required this.onOpenRequests,
   });
 
   final List<Map<String, dynamic>> requests;
+  final List<Map<String, dynamic>> history;
   final List<Map<String, dynamic>> sessions;
   final Map<String, dynamic> analytics;
+  final VoidCallback onOpenRequests;
 
   @override
   Widget build(BuildContext context) {
     final name = 'HoD';
     final dept = 'Department';
-    final totalCount = (analytics['total'] as num?)?.toInt() ?? requests.length;
-    final approvedCount =
-        (analytics['approved'] as num?)?.toInt() ??
-        requests.where((e) => portalOdStatusIsApproved(e['status'])).length;
-    final rejectedCount =
-        (analytics['rejected'] as num?)?.toInt() ??
-        requests.where((e) => portalOdStatusIsRejected(e['status'])).length;
-    final pendingCount =
-        (analytics['pending'] as num?)?.toInt() ??
-        requests.where((e) => portalOdStatusIsPending(e['status'])).length;
+    int count(String key, int fallback) {
+      final value = analytics[key];
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? fallback;
+    }
+
+    final approvedFromHistory = history
+        .where(
+          (request) =>
+              portalRoleDecisionDisplay(request, 'hod').startsWith('Approved'),
+        )
+        .length;
+    final rejectedFromHistory = history
+        .where(
+          (request) =>
+              portalRoleDecisionDisplay(request, 'hod').startsWith('Rejected'),
+        )
+        .length;
+    final totalCount = count(
+      'total',
+      requests.length + approvedFromHistory + rejectedFromHistory,
+    );
+    final approvedCount = count('approved', approvedFromHistory);
+    final rejectedCount = count('rejected', rejectedFromHistory);
+    final pendingCount = count('pending', requests.length);
     final total = totalCount.toString();
     final approved = approvedCount.toString();
     final pending = pendingCount.toString();
@@ -595,21 +610,25 @@ class _DashboardPanel extends StatelessWidget {
               title: 'Total Requests',
               value: total,
               accentColor: Colors.blue,
+              onTap: onOpenRequests,
             ),
             DashboardStatItem(
               title: 'Accepted',
               value: approved,
               accentColor: Colors.green,
+              onTap: onOpenRequests,
             ),
             DashboardStatItem(
               title: 'Pending',
               value: pending,
               accentColor: Colors.orange,
+              onTap: onOpenRequests,
             ),
             DashboardStatItem(
               title: 'Rejected',
               value: rejected,
               accentColor: Colors.red,
+              onTap: onOpenRequests,
             ),
           ],
         ),
@@ -618,8 +637,8 @@ class _DashboardPanel extends StatelessWidget {
   }
 }
 
-class _ParticipantsTable extends StatelessWidget {
-  const _ParticipantsTable({
+class _ODRequestsPanel extends StatelessWidget {
+  const _ODRequestsPanel({
     required this.requests,
     required this.onApprove,
     required this.onReject,
@@ -712,96 +731,6 @@ class _ParticipantCard extends StatelessWidget {
   }
 }
 
-class _EventsPanel extends StatelessWidget {
-  const _EventsPanel({required this.sessions, required this.requests});
-
-  final List<Map<String, dynamic>> sessions;
-  final List<Map<String, dynamic>> requests;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: scheme.outlineVariant),
-          ),
-          child: Text(
-            'Active sessions: ${sessions.length} | Pending event requests: ${requests.length}',
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-        ),
-        const SizedBox(height: 14),
-        if (sessions.isEmpty)
-          const _EmptyState(
-            icon: Icons.event_busy_outlined,
-            title: 'No active OD requests',
-            subtitle:
-                'Once approved students are in-session, they will show up here.',
-          )
-        else
-          ...sessions.map<Widget>((s) {
-            final event = s['event_name']?.toString() ?? 'Event';
-            final student = s['student_unique_id']?.toString() ?? '---';
-            final approvedBy = s['approved_by_name']?.toString() ?? '---';
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: scheme.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: scheme.outlineVariant),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: kHoDAccent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.event_available, color: kHoDAccent),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          event,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        Text(
-                          'Student ID: $student',
-                          style: TextStyle(
-                            color: scheme.onSurface.withValues(alpha: 0.65),
-                          ),
-                        ),
-                        Text(
-                          'Approved by: $approvedBy',
-                          style: TextStyle(
-                            color: scheme.onSurface.withValues(alpha: 0.65),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-      ],
-    );
-  }
-}
-
 class _HistoryPanel extends StatelessWidget {
   const _HistoryPanel({required this.rows});
 
@@ -809,7 +738,6 @@ class _HistoryPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final historyRows = rows;
 
     if (historyRows.isEmpty) {
@@ -821,70 +749,11 @@ class _HistoryPanel extends StatelessWidget {
     }
 
     return Column(
-      children: historyRows.map<Widget>((row) {
-        final status = portalRoleDecisionDisplay(row, 'hod');
-        final isApproved = status.startsWith('Approved');
-        final color = isApproved
-            ? Colors.green
-            : status.startsWith('Rejected')
-            ? Colors.red
-            : Colors.orange;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: scheme.outlineVariant),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                isApproved
-                    ? Icons.check_circle
-                    : status.startsWith('Rejected')
-                    ? Icons.cancel
-                    : Icons.schedule,
-                color: color,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      row['event_name']?.toString() ?? 'Untitled event',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    Text(
-                      portalOdDateTime(row['datetime']),
-                      style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: 0.65),
-                      ),
-                    ),
-                    PortalHistoryRequestDetails(request: row),
-                    ProofActionButtons(
-                      fileUrl: row['file_url']?.toString() ?? '',
-                    ),
-                    Text(
-                      '${status.startsWith('Approved')
-                          ? 'Approved'
-                          : status.startsWith('Rejected')
-                          ? 'Rejected'
-                          : 'Pending'} by ${portalRoleDecisionActor(row, 'hod')}',
-                      style: TextStyle(color: color),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                status,
-                style: TextStyle(color: color, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
+      children: historyRows
+          .map<Widget>(
+            (row) => PortalCompactHistoryCard(request: row, role: 'hod'),
+          )
+          .toList(),
     );
   }
 }
